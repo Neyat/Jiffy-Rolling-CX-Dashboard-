@@ -322,12 +322,9 @@ async function pushToSheet(payload) {
   if (!SCRIPT_URL) return;
   try {
     showSyncBar('loading', 'Syncing to Google Sheets...');
-    await fetch(SCRIPT_URL, {
-      method: 'POST',
-      mode: 'no-cors',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
+    // Encode payload as URL param to avoid CORS preflight
+    const encoded = encodeURIComponent(JSON.stringify(payload));
+    await fetch(SCRIPT_URL + '?payload=' + encoded, { method: 'GET', mode: 'no-cors' });
     showSyncBar('ok', 'Synced to Google Sheets · ' + fmtDateTime(new Date().toISOString()));
   } catch(e) {
     showSyncBar('error', 'Sync failed — check your Script URL');
@@ -339,7 +336,7 @@ async function loadFromSheet() {
   try {
     const res = await fetch(SCRIPT_URL + '?action=get&day=' + todayKeyCst());
     const data = await res.json();
-    if (data.baseline) {
+    if (data.baseline && data.baseline.length > 0) {
       localStorage.setItem('jf2_day_key',       data.dayKey);
       localStorage.setItem('jf2_baseline_ids',  JSON.stringify(data.baseline));
       localStorage.setItem('jf2_baseline_time', data.baselineTime);
