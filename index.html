@@ -345,6 +345,7 @@ async function loadFromSheet() {
       localStorage.setItem('jf2_snapshots',     JSON.stringify(data.snapshots));
       showSyncBar('ok', 'Synced from Google Sheets · ' + fmtDateTime(new Date().toISOString()));
       updateDayTracker();
+      renderFromSheets();
       if (currentRows.length) render();
     } else {
       showSyncBar('ok', 'Connected · No data yet for today');
@@ -352,6 +353,33 @@ async function loadFromSheet() {
   } catch(e) {
     showSyncBar('error', 'Could not load from Google Sheets — check Script URL');
   }
+}
+
+// Render day totals from Sheets state alone (no CSV needed)
+function renderFromSheets() {
+  const state = getState();
+  if (!state.baseline || state.baseline.length === 0) return;
+  $('emptyState').classList.add('hidden');
+  $('dashboard').classList.remove('hidden');
+
+  const snapCount = state.snapshots.length;
+  $('infoBanner').innerHTML = `✅ <strong>${snapCount} snapshot${snapCount!==1?'s':''} today.</strong> Running total reflects all removals since the ${fmtDateTime(state.baselineTime)} baseline. Synced across all devices. <strong>Upload a current snapshot CSV to see live queue metrics.</strong>`;
+
+  const workedCount  = state.workedIds.size;
+  const baselineSize = state.baselineSize || 0;
+  $('whWorked').textContent    = fmt(workedCount);
+  $('whWorkedSub').textContent = `Removed from queue since ${fmtDateTime(state.baselineTime)}`;
+  $('whNet').textContent       = '—';
+  $('whBaseline').textContent  = fmt(baselineSize);
+  $('whCurrent').textContent   = '—';
+
+  // Clear current state KPIs until CSV is uploaded
+  ['kTotal','kSL','kBreach','kAtRisk','kOldest','kNewToday','kNewYest'].forEach(id => {
+    const el = $(id); if(el) el.textContent = '—';
+  });
+  $('kTotalSub').textContent = 'Upload a snapshot to see live queue state';
+  $('kSLSub').textContent    = '';
+  $('kBreachSub').textContent= '';
 }
 
 // ─── STORAGE KEYS ─────────────────────────────────────────────────────────────
