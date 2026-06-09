@@ -7,112 +7,128 @@
 <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f7fa; color: #1f2937; padding: 20px; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f7fa; color: #1f2937; padding: 20px; }
+header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px; }
+h1 { font-size: 22px; color: #111827; font-weight: 700; }
+.meta { color: #6b7280; font-size: 13px; }
 
-  header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px; }
-  h1 { font-size: 24px; color: #111827; }
-  .meta { color: #6b7280; font-size: 13px; }
+/* SYNC BAR */
+.sync-bar { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-radius: 8px; font-size: 13px; margin-bottom: 14px; background: #f0fdf4; border: 1px solid #bbf7d0; color: #065f46; flex-wrap: wrap; }
+.sync-bar.error { background: #fef2f2; border-color: #fecaca; color: #991b1b; }
+.sync-bar.loading { background: #eff6ff; border-color: #bfdbfe; color: #1e40af; }
+.sync-dot { width: 9px; height: 9px; border-radius: 50%; background: #10b981; flex-shrink: 0; }
+.sync-dot.error { background: #ef4444; }
+.sync-dot.loading { background: #3b82f6; animation: pulse 1s infinite; }
+@keyframes pulse { 0%,100%{opacity:1}50%{opacity:0.35} }
 
-  .controls { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 20px; padding: 16px; background: #fff; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
-  .controls label { font-weight: 500; font-size: 14px; }
-  .controls input[type="number"] { width: 70px; padding: 6px 10px; border: 1px solid #d1d5db; border-radius: 6px; }
-  .upload-zone { flex: 1; min-width: 280px; border: 2px dashed #cbd5e1; border-radius: 8px; padding: 14px; text-align: center; cursor: pointer; transition: all 0.15s; background: #fafbfc; }
-  .upload-zone:hover, .upload-zone.dragover { border-color: #6366f1; background: #eef2ff; }
-  .upload-zone input { display: none; }
-  .upload-zone .uz-loaded { font-size: 11px; color: #059669; margin-top: 6px; }
-  button { background: #4f46e5; color: #fff; border: 0; padding: 9px 16px; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 500; }
-  button:hover { background: #4338ca; }
-  button.secondary { background: #e5e7eb; color: #374151; }
-  button.secondary:hover { background: #d1d5db; }
-  button.danger { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
-  button.danger:hover { background: #fecaca; }
+/* CONTROLS */
+.controls { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; padding: 16px; background: #fff; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+.upload-zone { flex: 1; min-width: 260px; border: 2px dashed #cbd5e1; border-radius: 8px; padding: 14px; text-align: center; cursor: pointer; transition: all 0.15s; background: #fafbfc; }
+.upload-zone:hover, .upload-zone.dragover { border-color: #6366f1; background: #eef2ff; }
+.upload-zone input { display: none; }
+.uz-loaded { font-size: 11px; color: #059669; margin-top: 5px; font-weight: 600; }
+button { background: #4f46e5; color: #fff; border: 0; padding: 9px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; }
+button:hover { background: #4338ca; }
+button.secondary { background: #e5e7eb; color: #374151; }
+button.secondary:hover { background: #d1d5db; }
+button.danger { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+button.danger:hover { background: #fecaca; }
+label { font-size: 13px; font-weight: 600; }
+input[type="number"] { width: 68px; padding: 6px 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; }
+.sup-name-wrap { display: flex; flex-direction: column; gap: 4px; }
+.sup-name-wrap input[type="text"] { width: 140px; padding: 6px 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; }
 
-  .sync-bar { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-radius: 8px; font-size: 13px; margin-bottom: 16px; background: #f0fdf4; border: 1px solid #bbf7d0; color: #065f46; }
-  .sync-bar.error { background: #fef2f2; border-color: #fecaca; color: #991b1b; }
-  .sync-bar.loading { background: #eff6ff; border-color: #bfdbfe; color: #1e40af; }
-  .sync-dot { width: 8px; height: 8px; border-radius: 50%; background: #10b981; flex-shrink: 0; }
-  .sync-dot.error { background: #ef4444; }
-  .sync-dot.loading { background: #3b82f6; animation: pulse 1s infinite; }
-  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+/* DAY TRACKER */
+.day-tracker { background: #fff; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); padding: 14px 18px; margin-bottom: 16px; display: flex; gap: 24px; align-items: center; flex-wrap: wrap; border-left: 4px solid #8b5cf6; }
+.dt-item { display: flex; flex-direction: column; gap: 3px; }
+.dt-label { font-size: 11px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }
+.dt-val { font-size: 14px; font-weight: 700; color: #111827; }
+.dt-val.purple { color: #7c3aed; }
+.dt-val.green  { color: #059669; }
+.dt-val.amber  { color: #d97706; }
 
-  .day-tracker { background: #fff; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); padding: 14px 18px; margin-bottom: 18px; display: flex; gap: 24px; align-items: center; flex-wrap: wrap; border-left: 4px solid #8b5cf6; }
-  .dt-item { display: flex; flex-direction: column; gap: 3px; }
-  .dt-label { font-size: 11px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }
-  .dt-val { font-size: 14px; font-weight: 600; color: #111827; }
-  .dt-val.purple { color: #7c3aed; }
-  .dt-val.green  { color: #059669; }
-  .dt-val.amber  { color: #d97706; }
-  .snap-history { margin-left: auto; display: flex; gap: 6px; align-items: center; }
-  .snap-pip-wrap { position: relative; }
-  .snap-pip-wrap:hover .snap-tooltip { display: block; }
-  .snap-pip { width: 10px; height: 10px; border-radius: 50%; background: #a5b4fc; cursor: default; }
-  .snap-pip.latest { background: #059669; }
-  .snap-tooltip { display: none; position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); background: #1f2937; color: #f9fafb; border-radius: 6px; padding: 6px 10px; font-size: 11px; white-space: nowrap; z-index: 20; }
+/* SNAP HISTORY PIPS */
+.snap-history { margin-left: auto; display: flex; gap: 5px; align-items: center; flex-wrap: wrap; }
+.snap-pip-wrap { position: relative; }
+.snap-pip-wrap:hover .snap-tooltip { display: block; }
+.snap-pip { width: 11px; height: 11px; border-radius: 50%; background: #a5b4fc; }
+.snap-pip.latest { background: #059669; }
+.snap-tooltip { display: none; position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%); background: #1f2937; color: #f9fafb; border-radius: 6px; padding: 6px 10px; font-size: 11px; white-space: nowrap; z-index: 20; pointer-events: none; }
 
-  .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; margin-bottom: 20px; }
-  .kpi { background: #fff; padding: 18px; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); border-left: 4px solid #6366f1; }
-  .kpi .label { font-size: 12px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }
-  .kpi .value { font-size: 28px; font-weight: 700; color: #111827; margin-top: 6px; }
-  .kpi .sub   { font-size: 12px; color: #6b7280; margin-top: 4px; }
-  .kpi.good   { border-left-color: #10b981; }
-  .kpi.warn   { border-left-color: #f59e0b; }
-  .kpi.bad    { border-left-color: #ef4444; }
-  .kpi.info   { border-left-color: #3b82f6; }
-  .kpi.worked { border-left-color: #8b5cf6; }
+/* WORKED HERO */
+.worked-hero { background: #fff; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); padding: 20px 24px; margin-bottom: 16px; display: flex; gap: 32px; align-items: center; flex-wrap: wrap; border-top: 4px solid #8b5cf6; }
+.wh-main .wh-label { font-size: 11px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }
+.wh-main .wh-val   { font-size: 56px; font-weight: 800; color: #7c3aed; line-height: 1; margin-top: 4px; }
+.wh-main .wh-sub   { font-size: 12px; color: #6b7280; margin-top: 6px; }
+.wh-divider { width: 1px; background: #e5e7eb; align-self: stretch; min-height: 60px; }
+.wh-stats { display: flex; gap: 28px; flex-wrap: wrap; }
+.wh-stat .whs-label { font-size: 11px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }
+.wh-stat .whs-val   { font-size: 24px; font-weight: 700; color: #111827; margin-top: 4px; }
+.wh-stat .whs-val.green { color: #059669; }
+.wh-stat .whs-val.red   { color: #dc2626; }
 
-  .worked-hero { background: #fff; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); padding: 20px 24px; margin-bottom: 20px; display: flex; gap: 32px; align-items: center; flex-wrap: wrap; border-top: 4px solid #8b5cf6; }
-  .wh-main .wh-label { font-size: 12px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }
-  .wh-main .wh-val   { font-size: 52px; font-weight: 700; color: #7c3aed; line-height: 1; margin-top: 4px; }
-  .wh-main .wh-sub   { font-size: 12px; color: #6b7280; margin-top: 6px; }
-  .wh-divider { width: 1px; background: #e5e7eb; align-self: stretch; }
-  .wh-stats { display: flex; gap: 28px; flex-wrap: wrap; }
-  .wh-stat .whs-label { font-size: 11px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }
-  .wh-stat .whs-val   { font-size: 22px; font-weight: 700; color: #111827; margin-top: 4px; }
-  .wh-stat .whs-val.green { color: #059669; }
-  .wh-stat .whs-val.red   { color: #dc2626; }
+/* KPI GRID */
+.kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(155px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.kpi { background: #fff; padding: 16px 18px; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); border-left: 4px solid #6366f1; }
+.kpi .label { font-size: 11px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }
+.kpi .value { font-size: 26px; font-weight: 700; color: #111827; margin-top: 5px; }
+.kpi .sub   { font-size: 11px; color: #6b7280; margin-top: 3px; }
+.kpi.good { border-left-color: #10b981; }
+.kpi.warn { border-left-color: #f59e0b; }
+.kpi.bad  { border-left-color: #ef4444; }
+.kpi.info { border-left-color: #3b82f6; }
 
-  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
-  @media (max-width: 900px) { .grid-2 { grid-template-columns: 1fr; } }
-  .card { background: #fff; padding: 20px; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
-  .card h2 { font-size: 16px; margin-bottom: 14px; color: #111827; font-weight: 600; }
-  .chart-wrap { position: relative; height: 280px; }
+/* CARDS / CHARTS */
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-bottom: 18px; }
+@media (max-width: 860px) { .grid-2 { grid-template-columns: 1fr; } }
+.card { background: #fff; padding: 18px; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); margin-bottom: 18px; }
+.card h2 { font-size: 15px; margin-bottom: 12px; color: #111827; font-weight: 700; }
+.chart-wrap { position: relative; height: 260px; }
 
-  table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th { text-align: left; padding: 10px 12px; background: #f9fafb; color: #6b7280; font-weight: 600; text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px; border-bottom: 1px solid #e5e7eb; position: sticky; top: 0; }
-  td { padding: 10px 12px; border-bottom: 1px solid #f3f4f6; }
-  tr:hover td { background: #f9fafb; }
-  tfoot td { font-weight: 700; background: #f3f4f6; border-top: 2px solid #d1d5db; }
-  .num { text-align: right; font-variant-numeric: tabular-nums; font-weight: 500; }
-  .pct-bar { display: inline-block; height: 8px; background: #e5e7eb; border-radius: 4px; width: 100px; vertical-align: middle; margin-right: 8px; }
-  .pct-bar > div { height: 100%; background: #6366f1; border-radius: 4px; }
-  .bucket-row td { padding: 11px 12px; font-size: 13px; }
-  .bucket-label { font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: 0.4px; }
-  .bk-missed  td { background: #ffd6d6; } .bk-missed  .bucket-label { color: #991b1b; }
-  .bk-critical td{ background: #fde68a; } .bk-critical .bucket-label { color: #78350f; }
-  .bk-urgent  td { background: #fef3c7; } .bk-urgent  .bucket-label { color: #92400e; }
-  .bk-high    td { background: #d1fae5; } .bk-high    .bucket-label { color: #065f46; }
-  .bk-medium  td { background: #e0f2fe; } .bk-medium  .bucket-label { color: #075985; }
-  .bk-low     td { background: #f0fdf4; } .bk-low     .bucket-label { color: #166534; }
-  .bk-safe    td { background: #f8fafc; } .bk-safe    .bucket-label { color: #374151; }
-  .status-dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; }
+/* TABLES */
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { text-align: left; padding: 9px 12px; background: #f9fafb; color: #6b7280; font-weight: 600; text-transform: uppercase; font-size: 11px; letter-spacing: 0.4px; border-bottom: 1px solid #e5e7eb; }
+td { padding: 9px 12px; border-bottom: 1px solid #f3f4f6; }
+tr:hover td { background: #f9fafb; }
+tfoot td { font-weight: 700; background: #f3f4f6; border-top: 2px solid #d1d5db; }
+.num { text-align: right; font-variant-numeric: tabular-nums; font-weight: 500; }
+.pct-bar { display: inline-block; height: 7px; background: #e5e7eb; border-radius: 4px; width: 80px; vertical-align: middle; margin-right: 6px; }
+.pct-bar > div { height: 100%; background: #6366f1; border-radius: 4px; }
 
-  .section-label { font-size: 13px; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; }
-  .empty-state { padding: 60px 20px; text-align: center; color: #6b7280; background: #fff; border-radius: 10px; }
-  .empty-state .big { font-size: 48px; margin-bottom: 12px; }
-  .scroll-box { max-height: 400px; overflow-y: auto; }
-  .hidden { display: none; }
-  .info-banner { background: #eef2ff; border-left: 4px solid #4f46e5; border-radius: 8px; padding: 12px 16px; font-size: 13px; color: #3730a3; margin-bottom: 18px; }
-  .warn-banner { background: #fef3c7; border-left: 4px solid #f59e0b; border-radius: 8px; padding: 12px 16px; font-size: 13px; color: #92400e; margin-bottom: 18px; }
-  .sla-legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; margin-bottom: 18px; padding: 10px 14px; background: #f9fafb; border-radius: 6px; border: 1px solid #e5e7eb; }
-  .sla-legend-item { display: flex; align-items: center; gap: 6px; }
-  .sla-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+/* BUCKETS */
+.bucket-label { font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: 0.4px; }
+.bk-missed  td { background: #ffd6d6; } .bk-missed  .bucket-label { color: #991b1b; }
+.bk-critical td{ background: #fde68a; } .bk-critical .bucket-label { color: #78350f; }
+.bk-urgent  td { background: #fef3c7; } .bk-urgent  .bucket-label { color: #92400e; }
+.bk-high    td { background: #d1fae5; } .bk-high    .bucket-label { color: #065f46; }
+.bk-medium  td { background: #e0f2fe; } .bk-medium  .bucket-label { color: #075985; }
+.bk-low     td { background: #f0fdf4; } .bk-low     .bucket-label { color: #166534; }
+.bk-safe    td { background: #f8fafc; } .bk-safe    .bucket-label { color: #374151; }
+.status-dot { display: inline-block; width: 11px; height: 11px; border-radius: 50%; }
 
-  .setup-banner { background: #fff; border: 2px dashed #6366f1; border-radius: 10px; padding: 24px; margin-bottom: 20px; text-align: center; }
-  .setup-banner h2 { color: #4f46e5; margin-bottom: 8px; }
-  .setup-banner p { color: #6b7280; font-size: 13px; margin-bottom: 16px; }
-  .setup-banner input { width: 100%; max-width: 500px; padding: 10px 14px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; margin-bottom: 10px; }
-  .comp-kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; margin-bottom: 20px; }
+/* SLA LEGEND */
+.sla-legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; margin-bottom: 16px; padding: 10px 14px; background: #f9fafb; border-radius: 6px; border: 1px solid #e5e7eb; }
+.sla-legend-item { display: flex; align-items: center; gap: 5px; }
+.sla-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+
+/* INTERVAL SECTION */
+.section-label { font-size: 12px; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; margin-top: 6px; }
+.comp-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(155px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.warn-banner { background: #fef3c7; border-left: 4px solid #f59e0b; border-radius: 8px; padding: 11px 15px; font-size: 13px; color: #92400e; margin-bottom: 16px; }
+.info-banner { background: #eef2ff; border-left: 4px solid #4f46e5; border-radius: 8px; padding: 11px 15px; font-size: 13px; color: #3730a3; margin-bottom: 16px; }
+
+/* SNAPSHOTS TABLE */
+.snaps-table td { font-size: 12px; }
+
+.empty-state { padding: 60px 20px; text-align: center; color: #6b7280; background: #fff; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+.empty-state .big { font-size: 44px; margin-bottom: 12px; }
+.hidden { display: none; }
+.scroll-box { max-height: 380px; overflow-y: auto; }
+
+/* SETUP NEEDED */
+.setup-needed { background: #fff7ed; border: 2px dashed #fb923c; border-radius: 10px; padding: 20px 24px; margin-bottom: 16px; font-size: 13px; color: #92400e; }
+.setup-needed h3 { margin-bottom: 8px; font-size: 15px; }
 </style>
 </head>
 <body>
@@ -120,135 +136,130 @@
 <header>
   <div>
     <h1>📊 JiffyShirts CX Queue Dashboard</h1>
-    <div class="meta" id="metaLine">Upload a CSV export to get started</div>
+    <div class="meta" id="metaLine">Loading…</div>
   </div>
-  <div class="meta" id="nowClock"></div>
+  <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+    <div class="meta" id="nowClock"></div>
+  </div>
 </header>
 
-<!-- GOOGLE SHEETS SETUP BANNER -->
-<div id="setupBanner" class="setup-banner">
-  <h2>🔗 Connect to Google Sheets</h2>
-  <p>Paste your Google Apps Script Web App URL below to enable cross-device syncing. Once connected, any machine can upload and the running totals stay in sync for everyone.</p>
-  <input type="text" id="scriptUrl" placeholder="https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec" />
-  <br>
-  <button onclick="saveScriptUrl()">Save & Connect</button>
-  <button class="secondary" style="margin-left:8px;" onclick="skipSetup()">Skip — use this device only</button>
-</div>
-
-<!-- SYNC STATUS BAR -->
-<div id="syncBar" class="sync-bar hidden">
-  <div class="sync-dot" id="syncDot"></div>
-  <span id="syncMsg">Connected to Google Sheets</span>
-  <button class="secondary" style="margin-left:auto;padding:4px 10px;font-size:12px;" onclick="disconnectSheet()">Disconnect</button>
+<!-- SYNC BAR -->
+<div class="sync-bar loading" id="syncBar">
+  <div class="sync-dot loading" id="syncDot"></div>
+  <span id="syncMsg">Connecting to Supabase…</span>
 </div>
 
 <!-- CONTROLS -->
 <div class="controls">
+  <div class="sup-name-wrap">
+    <label for="supName">Your name</label>
+    <input type="text" id="supName" placeholder="e.g. Neyat" maxlength="30" />
+  </div>
   <div class="upload-zone" id="uploadZone">
-    <strong>📂 Current Snapshot</strong>
-    <div style="font-size:12px;color:#6b7280;margin-top:4px;">Latest queue export — first upload of the day sets the baseline</div>
-    <div class="uz-loaded hidden" id="uzCurrent"></div>
+    <strong>📂 Upload Queue Snapshot</strong>
+    <div style="font-size:12px;color:#6b7280;margin-top:4px;">Latest Zendesk CSV export</div>
+    <div class="uz-loaded hidden" id="uzLoaded"></div>
     <input type="file" id="csvFile" accept=".csv" />
   </div>
-  <div class="upload-zone" id="prevUploadZone">
-    <strong>📂 Previous Snapshot (optional)</strong>
-    <div style="font-size:12px;color:#6b7280;margin-top:4px;">Earlier export — shows worked count for this interval</div>
-    <div class="uz-loaded hidden" id="uzPrev"></div>
-    <input type="file" id="prevFile" accept=".csv" />
-  </div>
   <div>
-    <label for="slaTarget">SLA Target (hrs):</label>
-    <input type="number" id="slaTarget" value="12" min="1" max="72" />
+    <label for="slaTarget">SLA Target (hrs)</label><br>
+    <input type="number" id="slaTarget" value="12" min="1" max="72" style="margin-top:4px;" />
   </div>
-  <div style="font-size:13px;color:#6b7280;">🌐 <strong>All times: CST/CDT</strong></div>
+  <div style="font-size:12px;color:#6b7280;">🌐 All times CST/CDT</div>
   <button class="secondary" id="recalcBtn">🔄 Recalculate</button>
-  <button class="secondary" id="sampleBtn">Load Sample</button>
+  <button class="secondary" id="refreshBtn">☁️ Refresh from DB</button>
   <button class="danger" id="resetBtn">🗑 Reset Day</button>
 </div>
 
 <!-- DAY TRACKER -->
 <div class="day-tracker" id="dayTracker">
+  <div class="dt-item"><div class="dt-label">Today</div><div class="dt-val purple" id="dtDate">—</div></div>
   <div class="dt-item"><div class="dt-label">Baseline Set</div><div class="dt-val purple" id="dtBaseline">—</div></div>
+  <div class="dt-item"><div class="dt-label">Baseline Size</div><div class="dt-val" id="dtBaseSize">—</div></div>
   <div class="dt-item"><div class="dt-label">Snapshots Today</div><div class="dt-val green" id="dtSnapCount">0</div></div>
-  <div class="dt-item"><div class="dt-label">Baseline Queue Size</div><div class="dt-val" id="dtBaseSize">—</div></div>
   <div class="dt-item"><div class="dt-label">Last Upload</div><div class="dt-val amber" id="dtLastUpload">—</div></div>
   <div class="snap-history" id="snapHistory"></div>
 </div>
 
+<!-- EMPTY STATE -->
 <div id="emptyState" class="empty-state">
   <div class="big">📥</div>
-  <div>Upload your queue export to get started.<br><br>
-  <strong>First upload of the day</strong> sets the baseline. Every upload after that builds the running worked count automatically.<br><br>
-  <span style="color:#6366f1;">Connect Google Sheets above to sync across all devices.</span></div>
+  <strong>Upload the first snapshot of the day to set the baseline.</strong>
+  <div style="margin-top:10px;color:#6b7280;font-size:13px;">
+    Every upload after that automatically adds removed ticket IDs to the running day total.<br>
+    All supervisors share the same count — uploads from any browser or device stack together.
+  </div>
 </div>
 
+<!-- DASHBOARD -->
 <div id="dashboard" class="hidden">
 
   <div class="info-banner" id="infoBanner"></div>
 
-  <div class="section-label">📊 Day Totals (Running — since baseline)</div>
+  <!-- WORKED HERO -->
+  <div class="section-label">📊 Running Day Total (since baseline — all supervisors combined)</div>
   <div class="worked-hero">
     <div class="wh-main">
       <div class="wh-label">Total Worked Today</div>
       <div class="wh-val" id="whWorked">0</div>
-      <div class="wh-sub" id="whWorkedSub">IDs removed from queue since baseline</div>
+      <div class="wh-sub" id="whSub">IDs removed from queue since baseline</div>
     </div>
     <div class="wh-divider"></div>
     <div class="wh-stats">
-      <div class="wh-stat"><div class="whs-label">Net Change</div><div class="whs-val" id="whNet">0</div></div>
-      <div class="wh-stat"><div class="whs-label">Baseline Size</div><div class="whs-val" id="whBaseline">0</div></div>
-      <div class="wh-stat"><div class="whs-label">Current Size</div><div class="whs-val" id="whCurrent">0</div></div>
+      <div class="wh-stat"><div class="whs-label">Net Change</div><div class="whs-val" id="whNet">—</div></div>
+      <div class="wh-stat"><div class="whs-label">Baseline Size</div><div class="whs-val" id="whBaseSize">—</div></div>
+      <div class="wh-stat"><div class="whs-label">Current Size</div><div class="whs-val" id="whCurrent">—</div></div>
+      <div class="wh-stat"><div class="whs-label">New Arrivals</div><div class="whs-val" id="whNewIn">—</div></div>
     </div>
   </div>
 
-  <div class="section-label" style="margin-top:4px;">📍 Current State (from Current Snapshot)</div>
+  <!-- CURRENT STATE KPIS -->
+  <div class="section-label">📍 Current Queue State (from your latest snapshot)</div>
   <div class="kpi-grid">
     <div class="kpi info"><div class="label">Total in Queue</div><div class="value" id="kTotal">—</div><div class="sub" id="kTotalSub"></div></div>
     <div class="kpi info"><div class="label">New In Today</div><div class="value" id="kNewToday">—</div><div class="sub">Requested today</div></div>
     <div class="kpi info"><div class="label">New In Yesterday</div><div class="value" id="kNewYest">—</div><div class="sub">Requested yesterday</div></div>
     <div class="kpi good" id="kSLCard"><div class="label">Service Level</div><div class="value" id="kSL">—</div><div class="sub" id="kSLSub"></div></div>
     <div class="kpi bad"><div class="label">SLA Breached</div><div class="value" id="kBreach">—</div><div class="sub" id="kBreachSub"></div></div>
-    <div class="kpi warn"><div class="label">At Risk</div><div class="value" id="kAtRisk">—</div><div class="sub">SLA deadline soon</div></div>
+    <div class="kpi warn"><div class="label">At Risk</div><div class="value" id="kAtRisk">—</div><div class="sub">within 2h of limit</div></div>
     <div class="kpi warn"><div class="label">Oldest Ticket</div><div class="value" id="kOldest">—</div><div class="sub">hours in queue</div></div>
   </div>
 
   <div class="sla-legend">
-    <strong style="font-size:12px;">SLA Status logic:</strong>
-    <div class="sla-legend-item"><span class="sla-dot" style="background:#ef4444"></span> <b>Breached</b> — age ≥ SLA target</div>
-    <div class="sla-legend-item"><span class="sla-dot" style="background:#f59e0b"></span> <b>At Risk</b> — within 2h of target</div>
-    <div class="sla-legend-item"><span class="sla-dot" style="background:#10b981"></span> <b>Within SLA</b> — more than 2h to go</div>
-    <div class="sla-legend-item"><span class="sla-dot" style="background:#d1d5db"></span> <b>No Date</b> — excluded from counts</div>
+    <strong style="font-size:12px;">SLA logic:</strong>
+    <div class="sla-legend-item"><span class="sla-dot" style="background:#ef4444"></span><b>Breached</b> — age ≥ target</div>
+    <div class="sla-legend-item"><span class="sla-dot" style="background:#f59e0b"></span><b>At Risk</b> — within 2h of target</div>
+    <div class="sla-legend-item"><span class="sla-dot" style="background:#10b981"></span><b>Within SLA</b> — more than 2h remaining</div>
+    <div class="sla-legend-item"><span class="sla-dot" style="background:#d1d5db"></span><b>No Date</b> — excluded</div>
   </div>
 
-  <div id="comparisonSection" class="hidden">
-    <div class="section-label">🔄 Interval Comparison (Current vs Previous Snapshot)</div>
-    <div class="comp-kpi-grid">
-      <div class="kpi worked"><div class="label">Worked (this interval)</div><div class="value" id="cWorked">—</div><div class="sub">IDs gone between snapshots</div></div>
-      <div class="kpi info"><div class="label">New Arrivals</div><div class="value" id="cAdded">—</div><div class="sub">New IDs since previous</div></div>
-      <div class="kpi warn"><div class="label">Net Queue Change</div><div class="value" id="cNet">—</div><div class="sub">Current − Previous</div></div>
-      <div class="kpi info"><div class="label">Previous Queue Size</div><div class="value" id="cPrevTotal">—</div><div class="sub">At previous snapshot</div></div>
-      <div class="kpi info"><div class="label">Time Between Snapshots</div><div class="value" id="cSpan">—</div><div class="sub" id="cSpanSub"></div></div>
-    </div>
+  <!-- INTERVAL COMPARISON -->
+  <div id="compSection">
+    <div class="section-label">🔄 Interval Comparison (your two most recent uploads)</div>
+    <div class="comp-grid" id="compGrid"></div>
   </div>
-  <div id="noCompHint" class="warn-banner">
-    💡 <strong>Upload a previous snapshot</strong> to see the interval comparison (worked + new arrivals between your last two check-ins). The running day total above updates regardless.
+  <div id="noCompHint" class="warn-banner hidden">
+    💡 Upload a second snapshot to see the interval comparison (worked + new arrivals between check-ins).
   </div>
 
+  <!-- CHARTS -->
   <div class="grid-2">
     <div class="card"><h2>📅 Volume by Requested Date</h2><div class="chart-wrap"><canvas id="chartVolume"></canvas></div></div>
     <div class="card"><h2>🏷️ Issue Type Breakdown</h2><div class="chart-wrap"><canvas id="chartIssue"></canvas></div></div>
   </div>
 
-  <div class="card" style="margin-bottom:20px;">
-    <h2>⏱️ Priority Breakdown by 2-Hour Buckets</h2>
-    <div style="font-size:12px;color:#6b7280;margin-bottom:12px;">Each bucket = 2h of ticket age. Time Range shows when tickets were requested (CST), working back from now.</div>
+  <!-- PRIORITY BUCKETS -->
+  <div class="card">
+    <h2>⏱️ Priority Buckets (2-hour bands)</h2>
+    <div style="font-size:12px;color:#6b7280;margin-bottom:10px;">Ticket age relative to now. "Time Range" shows when (CST) tickets were requested.</div>
     <table>
-      <thead><tr><th>Priority</th><th>Age Range</th><th>Time Range (CST)</th><th class="num">Count</th><th class="num">%</th><th class="num">Status</th></tr></thead>
+      <thead><tr><th>Priority</th><th>Age Range</th><th>Time Range (CST)</th><th class="num">Count</th><th class="num">%</th><th class="num">●</th></tr></thead>
       <tbody id="bucketBody"></tbody>
     </table>
   </div>
 
-  <div class="card" style="margin-bottom:20px;">
+  <!-- DAILY TABLE -->
+  <div class="card">
     <h2>📅 New Tickets by Date (CST)</h2>
     <table>
       <thead><tr><th>Date</th><th class="num">New Tickets In</th><th class="num">Still in Queue</th></tr></thead>
@@ -257,7 +268,8 @@
     </table>
   </div>
 
-  <div class="card" style="margin-bottom:20px;">
+  <!-- ISSUE TABLE -->
+  <div class="card">
     <h2>🏷️ Issue Type Detail</h2>
     <div class="scroll-box">
       <table>
@@ -268,186 +280,162 @@
     </div>
   </div>
 
-</div>
+  <!-- SNAPSHOT LOG -->
+  <div class="card">
+    <h2>📋 Today's Snapshot Log</h2>
+    <div class="scroll-box">
+      <table class="snaps-table">
+        <thead><tr><th>Time (CST)</th><th>Supervisor</th><th>Queue Size</th><th>File</th></tr></thead>
+        <tbody id="snapsBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+</div><!-- /dashboard -->
 
 <script>
-const TZ = 'America/Chicago';
-const $ = id => document.getElementById(id);
-let charts = {};
-let currentRows = [];
-let prevRows = [];
-let SCRIPT_URL = localStorage.getItem('jf_script_url') || '';
+// ─── CONFIG ──────────────────────────────────────────────────────────────────
+const SUPABASE_URL  = 'https://flcwwdyjykskuotuitie.supabase.co';
+const SUPABASE_KEY  = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZsY3d3ZHlqeWtza3VvdHVpdGllIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTg2NjUsImV4cCI6MjA5NjUzNDY2NX0.UH3ev0F754gFxbfdwMRfQYE6KmTs4V7jYnDkWZa22Ws';
+const TABLE         = 'queue_day_state';
+const TZ            = 'America/Chicago';
 
-// ─── SETUP BANNER ─────────────────────────────────────────────────────────────
-function initSetup() {
-  if (SCRIPT_URL) {
-    $('setupBanner').classList.add('hidden');
-    showSyncBar('loading', 'Connecting to Google Sheets...');
-    loadFromSheet();
-  } else {
-    $('setupBanner').classList.remove('hidden');
-    $('syncBar').classList.add('hidden');
-  }
-}
-function saveScriptUrl() {
-  const url = $('scriptUrl').value.trim();
-  if (!url.includes('script.google.com')) { alert('Please enter a valid Google Apps Script URL'); return; }
-  SCRIPT_URL = url;
-  localStorage.setItem('jf_script_url', url);
-  $('setupBanner').classList.add('hidden');
-  showSyncBar('loading', 'Connecting...');
-  loadFromSheet();
-}
-function skipSetup() {
-  $('setupBanner').classList.add('hidden');
-  $('syncBar').classList.add('hidden');
-}
-function disconnectSheet() {
-  SCRIPT_URL = '';
-  localStorage.removeItem('jf_script_url');
-  $('syncBar').classList.add('hidden');
-  $('setupBanner').classList.remove('hidden');
-}
-function showSyncBar(state, msg) {
-  const bar = $('syncBar'), dot = $('syncDot');
-  bar.className = 'sync-bar' + (state === 'error' ? ' error' : state === 'loading' ? ' loading' : '');
-  bar.classList.remove('hidden');
-  dot.className = 'sync-dot' + (state === 'error' ? ' error' : state === 'loading' ? ' loading' : '');
-  $('syncMsg').textContent = msg;
-}
-
-// ─── GOOGLE SHEETS SYNC ───────────────────────────────────────────────────────
-async function pushToSheet(payload) {
-  if (!SCRIPT_URL) return;
-  try {
-    showSyncBar('loading', 'Syncing to Google Sheets...');
-    // Encode payload as URL param to avoid CORS preflight
-    const encoded = encodeURIComponent(JSON.stringify(payload));
-    await fetch(SCRIPT_URL + '?payload=' + encoded, { method: 'GET', mode: 'no-cors' });
-    showSyncBar('ok', 'Synced to Google Sheets · ' + fmtDateTime(new Date().toISOString()));
-  } catch(e) {
-    showSyncBar('error', 'Sync failed — check your Script URL');
-  }
-}
-
-async function loadFromSheet() {
-  if (!SCRIPT_URL) return;
-  try {
-    const res = await fetch(SCRIPT_URL + '?action=get&day=' + todayKeyCst());
-    const data = await res.json();
-    if (data.baseline && data.baseline.length > 0) {
-      localStorage.setItem('jf2_day_key',       data.dayKey);
-      localStorage.setItem('jf2_baseline_ids',  JSON.stringify(data.baseline));
-      localStorage.setItem('jf2_baseline_time', data.baselineTime);
-      localStorage.setItem('jf2_baseline_size', data.baselineSize);
-      localStorage.setItem('jf2_worked_ids',    JSON.stringify(data.workedIds));
-      localStorage.setItem('jf2_new_ids',       JSON.stringify(data.newIds));
-      localStorage.setItem('jf2_snapshots',     JSON.stringify(data.snapshots));
-      showSyncBar('ok', 'Synced from Google Sheets · ' + fmtDateTime(new Date().toISOString()));
-      updateDayTracker();
-      renderFromSheets();
-      if (currentRows.length) render();
-    } else {
-      showSyncBar('ok', 'Connected · No data yet for today');
-    }
-  } catch(e) {
-    showSyncBar('error', 'Could not load from Google Sheets — check Script URL');
-  }
-}
-
-// Render day totals from Sheets state alone (no CSV needed)
-function renderFromSheets() {
-  const state = getState();
-  if (!state.baseline || state.baseline.length === 0) return;
-  $('emptyState').classList.add('hidden');
-  $('dashboard').classList.remove('hidden');
-
-  const snapCount = state.snapshots.length;
-  $('infoBanner').innerHTML = `✅ <strong>${snapCount} snapshot${snapCount!==1?'s':''} today.</strong> Running total reflects all removals since the ${fmtDateTime(state.baselineTime)} baseline. Synced across all devices. <strong>Upload a current snapshot CSV to see live queue metrics.</strong>`;
-
-  const workedCount  = state.workedIds.size;
-  const baselineSize = state.baselineSize || 0;
-  $('whWorked').textContent    = fmt(workedCount);
-  $('whWorkedSub').textContent = `Removed from queue since ${fmtDateTime(state.baselineTime)}`;
-  $('whNet').textContent       = '—';
-  $('whBaseline').textContent  = fmt(baselineSize);
-  $('whCurrent').textContent   = '—';
-
-  // Clear current state KPIs until CSV is uploaded
-  ['kTotal','kSL','kBreach','kAtRisk','kOldest','kNewToday','kNewYest'].forEach(id => {
-    const el = $(id); if(el) el.textContent = '—';
-  });
-  $('kTotalSub').textContent = 'Upload a snapshot to see live queue state';
-  $('kSLSub').textContent    = '';
-  $('kBreachSub').textContent= '';
-}
-
-// ─── STORAGE KEYS ─────────────────────────────────────────────────────────────
-const SK = {
-  dayKey:'jf2_day_key', baseline:'jf2_baseline_ids', baselineTime:'jf2_baseline_time',
-  baselineSize:'jf2_baseline_size', workedIds:'jf2_worked_ids', newIds:'jf2_new_ids', snapshots:'jf2_snapshots'
-};
+// ─── HELPERS ─────────────────────────────────────────────────────────────────
+const $   = id => document.getElementById(id);
+const fmt = n  => n == null ? '—' : Number(n).toLocaleString();
+const pct = (n,d) => d ? ((n/d)*100).toFixed(1)+'%' : '0%';
 
 function todayKeyCst() {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year:'numeric', month:'2-digit', day:'2-digit' }).format(new Date());
+  return new Intl.DateTimeFormat('en-CA',{timeZone:TZ,year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 }
-function fmtDateTime(isoStr) {
-  if (!isoStr) return '—';
-  return new Intl.DateTimeFormat('en-US', { timeZone: TZ, month:'short', day:'numeric', hour:'numeric', minute:'2-digit', hour12:true }).format(new Date(isoStr));
+function fmtDT(iso) {
+  if (!iso) return '—';
+  return new Intl.DateTimeFormat('en-US',{timeZone:TZ,month:'short',day:'numeric',hour:'numeric',minute:'2-digit',hour12:true}).format(new Date(iso));
 }
 function fmtTime(d) {
-  if (!d) return '—';
-  return new Intl.DateTimeFormat('en-US', { timeZone: TZ, hour:'numeric', minute:'2-digit', hour12:true }).format(d);
+  return new Intl.DateTimeFormat('en-US',{timeZone:TZ,hour:'numeric',minute:'2-digit',hour12:true}).format(d);
 }
-function addDaysKey(key, delta) {
-  const [y,m,d] = key.split('-').map(Number);
+function addDaysKey(k,delta) {
+  const [y,m,d]=k.split('-').map(Number);
   return new Date(Date.UTC(y,m-1,d+delta)).toISOString().slice(0,10);
 }
 function parseDate(s) {
-  if (!s) return null; s = s.trim();
-  if (!s || s==='-' || s==="'-") return null;
-  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
+  if (!s) return null; s=s.trim();
+  if (!s||s==='-'||s==="'-") return null;
+  const m=s.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
   if (!m) return null;
-  const [,y,mo,d,h,mi] = m.map(Number);
-  const guess = new Date(Date.UTC(y,mo-1,d,h,mi));
-  const parts = new Intl.DateTimeFormat('en-US',{timeZone:TZ,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false}).formatToParts(guess);
-  const get = t => parts.find(p=>p.type===t).value;
-  let hr = +get('hour'); if(hr===24)hr=0;
-  const wallUtc = Date.UTC(+get('year'),+get('month')-1,+get('day'),hr,+get('minute'));
-  return new Date(guess.getTime()-(wallUtc-guess.getTime()));
+  const [,y,mo,d,h,mi]=m.map(Number);
+  const guess=new Date(Date.UTC(y,mo-1,d,h,mi));
+  const parts=new Intl.DateTimeFormat('en-US',{timeZone:TZ,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false}).formatToParts(guess);
+  const get=t=>parts.find(p=>p.type===t).value;
+  let hr=+get('hour'); if(hr===24)hr=0;
+  const wall=Date.UTC(+get('year'),+get('month')-1,+get('day'),hr,+get('minute'));
+  return new Date(guess.getTime()-(wall-guess.getTime()));
 }
 function dateKeyRaw(s) {
   if (!s) return null; s=s.trim();
   if (!s||s==='-'||s==="'-") return null; return s.slice(0,10);
 }
-function maxTs(rowSet) {
-  const ts = rowSet.map(r=>[r.Requested,r.Updated].map(s=>s&&s.trim()).filter(Boolean)).flat().filter(Boolean);
-  if (!ts.length) return null; ts.sort(); return ts[ts.length-1];
+function escH(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+
+// ─── SUPABASE API ─────────────────────────────────────────────────────────────
+const headers = {
+  'apikey': SUPABASE_KEY,
+  'Authorization': 'Bearer ' + SUPABASE_KEY,
+  'Content-Type': 'application/json',
+  'Prefer': 'return=representation'
+};
+
+async function dbGet(dayKey) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${TABLE}?day_key=eq.${dayKey}&select=*`, { headers });
+  if (!res.ok) throw new Error('GET failed: ' + res.status);
+  const rows = await res.json();
+  return rows[0] || null;
 }
-function escHtml(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
-function fmt(n){return n==null?'—':n.toLocaleString();}
-function pct(n,d){return d?((n/d)*100).toFixed(1)+'%':'0%';}
+
+async function dbUpsert(record) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${TABLE}?on_conflict=day_key`, {
+    method: 'POST',
+    headers: { ...headers, 'Prefer': 'resolution=merge-duplicates,return=representation' },
+    body: JSON.stringify(record)
+  });
+  if (!res.ok) {
+    const txt = await res.text();
+    throw new Error('UPSERT failed: ' + res.status + ' ' + txt);
+  }
+  return res.json();
+}
+
+async function dbDelete(dayKey) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${TABLE}?day_key=eq.${dayKey}`, {
+    method: 'DELETE', headers
+  });
+  if (!res.ok) throw new Error('DELETE failed: ' + res.status);
+}
+
+// ─── SYNC BAR ─────────────────────────────────────────────────────────────────
+function syncBar(state, msg) {
+  const bar=$('syncBar'), dot=$('syncDot');
+  bar.className='sync-bar'+(state==='error'?' error':state==='loading'?' loading':'');
+  dot.className='sync-dot'+(state==='error'?' error':state==='loading'?' loading':'');
+  $('syncMsg').textContent=msg;
+}
 
 // ─── STATE ────────────────────────────────────────────────────────────────────
-function getState() {
-  const today = todayKeyCst();
-  if (localStorage.getItem(SK.dayKey) !== today) {
-    Object.values(SK).forEach(k=>localStorage.removeItem(k));
-    localStorage.setItem(SK.dayKey, today);
+// In-memory state loaded from Supabase
+let STATE = null; // { day_key, baseline_ids:[], baseline_time, baseline_size, worked_ids:[], new_ids:[], snapshots:[] }
+let currentRows = [];
+let prevRows    = [];
+let charts = {};
+
+async function loadState() {
+  const dayKey = todayKeyCst();
+  syncBar('loading','Loading today\'s data from Supabase…');
+  try {
+    const row = await dbGet(dayKey);
+    if (row) {
+      STATE = {
+        day_key:       row.day_key,
+        baseline_ids:  row.baseline_ids  || [],
+        baseline_time: row.baseline_time || null,
+        baseline_size: row.baseline_size || 0,
+        worked_ids:    row.worked_ids    || [],
+        new_ids:       row.new_ids       || [],
+        snapshots:     row.snapshots     || [],
+      };
+      syncBar('ok', `Synced · ${fmtDT(new Date().toISOString())} · ${STATE.snapshots.length} snapshot${STATE.snapshots.length!==1?'s':''} today`);
+      updateDayTracker();
+      renderDayTotalsOnly();
+    } else {
+      STATE = null;
+      syncBar('ok','Connected · No data yet for today — upload first snapshot to set baseline');
+    }
+    $('metaLine').textContent = 'Connected to Supabase · ' + todayKeyCst();
+  } catch(e) {
+    syncBar('error','Could not connect to Supabase: ' + e.message);
+    $('metaLine').textContent = 'Supabase connection failed';
+    console.error(e);
   }
-  return {
-    today,
-    baseline:     JSON.parse(localStorage.getItem(SK.baseline)||'null'),
-    baselineTime: localStorage.getItem(SK.baselineTime),
-    baselineSize: parseInt(localStorage.getItem(SK.baselineSize)||'0'),
-    workedIds:    new Set(JSON.parse(localStorage.getItem(SK.workedIds)||'[]')),
-    newIds:       new Set(JSON.parse(localStorage.getItem(SK.newIds)||'[]')),
-    snapshots:    JSON.parse(localStorage.getItem(SK.snapshots)||'[]'),
-  };
 }
-function saveRunning(workedSet, newSet) {
-  localStorage.setItem(SK.workedIds, JSON.stringify([...workedSet]));
-  localStorage.setItem(SK.newIds,    JSON.stringify([...newSet]));
+
+async function saveState() {
+  if (!STATE) return;
+  syncBar('loading','Saving to Supabase…');
+  try {
+    await dbUpsert({
+      day_key:       STATE.day_key,
+      baseline_ids:  STATE.baseline_ids,
+      baseline_time: STATE.baseline_time,
+      baseline_size: STATE.baseline_size,
+      worked_ids:    STATE.worked_ids,
+      new_ids:       STATE.new_ids,
+      snapshots:     STATE.snapshots,
+    });
+    syncBar('ok','Saved · ' + fmtDT(new Date().toISOString()) + ' · All supervisors synced');
+  } catch(e) {
+    syncBar('error','Save failed: ' + e.message);
+    console.error(e);
+  }
 }
 
 // ─── FILE WIRING ──────────────────────────────────────────────────────────────
@@ -462,136 +450,155 @@ function wireZone(zoneId, inputId, handler) {
 }
 wireZone('uploadZone','csvFile', f=>{
   Papa.parse(f,{header:true,skipEmptyLines:true,complete:res=>{
-    currentRows=res.data.filter(r=>r.ID);
-    processCurrentUpload(currentRows, f.name);
-  }});
-});
-wireZone('prevUploadZone','prevFile', f=>{
-  Papa.parse(f,{header:true,skipEmptyLines:true,complete:res=>{
-    prevRows=res.data.filter(r=>r.ID);
-    $('uzPrev').textContent=`✓ ${f.name} · ${prevRows.length} tickets`;
-    $('uzPrev').classList.remove('hidden');
-    if(currentRows.length) render();
+    const rows=res.data.filter(r=>r.ID);
+    processUpload(rows, f.name);
   }});
 });
 
 // ─── PROCESS UPLOAD ───────────────────────────────────────────────────────────
-async function processCurrentUpload(rows, filename) {
-  const state = getState();
+async function processUpload(rows, filename) {
+  const supName = $('supName').value.trim() || 'Unknown';
+  const dayKey  = todayKeyCst();
+  const now     = new Date().toISOString();
   const currentIds = new Set(rows.map(r=>String(r.ID)));
-  const now = new Date().toISOString();
 
-  if (!state.baseline) {
-    localStorage.setItem(SK.baseline,     JSON.stringify([...currentIds]));
-    localStorage.setItem(SK.baselineTime, now);
-    localStorage.setItem(SK.baselineSize, currentIds.size);
-    saveRunning(new Set(), new Set());
+  // Re-fetch latest state first to avoid overwriting another sup's work
+  syncBar('loading','Fetching latest state before saving…');
+  try {
+    const fresh = await dbGet(dayKey);
+    if (fresh) {
+      STATE = {
+        day_key:       fresh.day_key,
+        baseline_ids:  fresh.baseline_ids  || [],
+        baseline_time: fresh.baseline_time || null,
+        baseline_size: fresh.baseline_size || 0,
+        worked_ids:    fresh.worked_ids    || [],
+        new_ids:       fresh.new_ids       || [],
+        snapshots:     fresh.snapshots     || [],
+      };
+    }
+  } catch(e) { /* use local STATE if fetch fails */ }
+
+  if (!STATE || STATE.day_key !== dayKey) {
+    // First upload of the day — set baseline
+    STATE = {
+      day_key:       dayKey,
+      baseline_ids:  [...currentIds],
+      baseline_time: now,
+      baseline_size: currentIds.size,
+      worked_ids:    [],
+      new_ids:       [],
+      snapshots:     [],
+    };
   } else {
-    const baselineIds = new Set(state.baseline);
-    const workedIds = state.workedIds;
-    const newIds    = state.newIds;
-    baselineIds.forEach(id=>{if(!currentIds.has(id))workedIds.add(id);});
-    currentIds.forEach(id=>{if(!baselineIds.has(id))newIds.add(id);});
-    saveRunning(workedIds, newIds);
+    // Accumulate: merge new removals into worked_ids set
+    const baseSet   = new Set(STATE.baseline_ids);
+    const workedSet = new Set(STATE.worked_ids);
+    const newSet    = new Set(STATE.new_ids);
+
+    baseSet.forEach(id => { if (!currentIds.has(id)) workedSet.add(id); });
+    currentIds.forEach(id => { if (!baseSet.has(id)) newSet.add(id); });
+
+    STATE.worked_ids = [...workedSet];
+    STATE.new_ids    = [...newSet];
   }
 
-  const snaps = state.snapshots;
-  snaps.push({time:now, size:rows.length, filename});
-  localStorage.setItem(SK.snapshots, JSON.stringify(snaps));
+  // Record this snapshot
+  STATE.snapshots.push({ time: now, size: rows.length, filename, supervisor: supName });
 
-  $('uzCurrent').textContent=`✓ ${filename} · ${rows.length} tickets · ${fmtDateTime(now)}`;
-  $('uzCurrent').classList.remove('hidden');
-  $('metaLine').textContent=`Loaded ${rows.length} tickets from ${filename}`;
+  // Keep last 2 snapshots' row data locally for interval comparison
+  prevRows    = currentRows;
+  currentRows = rows;
 
-  // Push to Google Sheets
-  const freshState = getState();
-  await pushToSheet({
-    action: 'save',
-    dayKey: freshState.today,
-    baseline:     [...new Set(JSON.parse(localStorage.getItem(SK.baseline)||'[]'))],
-    baselineTime: localStorage.getItem(SK.baselineTime),
-    baselineSize: parseInt(localStorage.getItem(SK.baselineSize)||'0'),
-    workedIds:    [...freshState.workedIds],
-    newIds:       [...freshState.newIds],
-    snapshots:    freshState.snapshots,
-  });
+  $('uzLoaded').textContent = `✓ ${filename} · ${rows.length} tickets · ${supName} · ${fmtDT(now)}`;
+  $('uzLoaded').classList.remove('hidden');
+  $('metaLine').textContent = `Loaded ${rows.length} tickets from ${filename}`;
 
+  await saveState();
   updateDayTracker();
   render();
 }
 
 // ─── DAY TRACKER ──────────────────────────────────────────────────────────────
 function updateDayTracker() {
-  const state = getState();
-  $('dtBaseline').textContent   = state.baselineTime ? fmtDateTime(state.baselineTime) : '—';
-  $('dtSnapCount').textContent  = state.snapshots.length;
-  $('dtBaseSize').textContent   = state.baselineSize || '—';
-  $('dtLastUpload').textContent = state.snapshots.length ? fmtDateTime(state.snapshots[state.snapshots.length-1].time) : '—';
-  $('snapHistory').innerHTML = state.snapshots.map((s,i)=>{
-    const isLatest = i===state.snapshots.length-1;
-    return `<div class="snap-pip-wrap"><div class="snap-pip${isLatest?' latest':''}"></div><div class="snap-tooltip">#${i+1} · ${fmtDateTime(s.time)} · ${s.size} tickets · ${s.filename}</div></div>`;
+  if (!STATE) return;
+  $('dtDate').textContent      = STATE.day_key || '—';
+  $('dtBaseline').textContent  = STATE.baseline_time ? fmtDT(STATE.baseline_time) : '—';
+  $('dtBaseSize').textContent  = STATE.baseline_size ? fmt(STATE.baseline_size) : '—';
+  $('dtSnapCount').textContent = STATE.snapshots.length;
+  const last = STATE.snapshots[STATE.snapshots.length-1];
+  $('dtLastUpload').textContent = last ? `${fmtDT(last.time)} · ${last.supervisor}` : '—';
+
+  $('snapHistory').innerHTML = STATE.snapshots.map((s,i)=>{
+    const isLatest = i===STATE.snapshots.length-1;
+    return `<div class="snap-pip-wrap">
+      <div class="snap-pip${isLatest?' latest':''}"></div>
+      <div class="snap-tooltip">#${i+1} · ${fmtDT(s.time)} · ${s.supervisor} · ${s.size} tickets</div>
+    </div>`;
   }).join('');
 }
 
-// ─── RESET ────────────────────────────────────────────────────────────────────
-async function resetDay() {
-  if (!confirm('Reset all day totals? This clears the baseline and running worked count for everyone.')) return;
-  Object.values(SK).forEach(k=>localStorage.removeItem(k));
-  if (SCRIPT_URL) {
-    await pushToSheet({ action:'reset', dayKey: todayKeyCst() });
-  }
-  currentRows=[]; prevRows=[];
-  $('dashboard').classList.add('hidden');
-  $('emptyState').classList.remove('hidden');
-  $('uzCurrent').classList.add('hidden');
-  $('uzPrev').classList.add('hidden');
-  $('metaLine').textContent='Upload a CSV export to get started';
-  updateDayTracker();
+// Render just the day totals (when no CSV is loaded yet but Supabase has data)
+function renderDayTotalsOnly() {
+  if (!STATE) return;
+  $('emptyState').classList.add('hidden');
+  $('dashboard').classList.remove('hidden');
+  const w = STATE.worked_ids.length;
+  $('whWorked').textContent  = fmt(w);
+  $('whSub').textContent     = `Removed since ${fmtDT(STATE.baseline_time)} · ${STATE.snapshots.length} snapshot${STATE.snapshots.length!==1?'s':''}`;
+  $('whBaseSize').textContent = fmt(STATE.baseline_size);
+  $('whNet').textContent      = '—';
+  $('whCurrent').textContent  = '—';
+  $('whNewIn').textContent    = fmt(STATE.new_ids.length);
+  $('infoBanner').innerHTML   = `☁️ <strong>Loaded from Supabase.</strong> ${STATE.snapshots.length} snapshot${STATE.snapshots.length!==1?'s':''} today · baseline set ${fmtDT(STATE.baseline_time)} · <strong>Upload a CSV to see live queue metrics.</strong>`;
+  updateSnapshotLog();
 }
 
-// ─── RENDER ───────────────────────────────────────────────────────────────────
+// ─── MAIN RENDER ──────────────────────────────────────────────────────────────
 function render() {
-  if (!currentRows.length) return;
+  if (!currentRows.length) { renderDayTotalsOnly(); return; }
   $('emptyState').classList.add('hidden');
   $('dashboard').classList.remove('hidden');
 
-  const state    = getState();
-  const slaHrs   = parseFloat($('slaTarget').value)||12;
+  const slaHrs    = parseFloat($('slaTarget').value)||12;
   const atRiskHrs = 2;
-  const now      = new Date();
-  const todayKey = todayKeyCst();
-  const yestKey  = addDaysKey(todayKey,-1);
+  const now       = new Date();
+  const todayKey  = todayKeyCst();
+  const yestKey   = addDaysKey(todayKey,-1);
 
   const enriched = currentRows.map(r=>{
     const reqD=parseDate(r.Requested);
     const ageH=reqD?(now-reqD)/3600000:null;
     let slaStatus='none';
-    if(ageH!==null){if(ageH>=slaHrs)slaStatus='breached';else if(ageH>=slaHrs-atRiskHrs)slaStatus='atrisk';else slaStatus='ok';}
-    return{...r,_req:reqD,_upd:parseDate(r.Updated),_ageH:ageH,_slaStatus:slaStatus,_reqKey:dateKeyRaw(r.Requested)};
+    if(ageH!=null){if(ageH>=slaHrs)slaStatus='breached';else if(ageH>=slaHrs-atRiskHrs)slaStatus='atrisk';else slaStatus='ok';}
+    return{...r,_req:reqD,_ageH:ageH,_slaStatus:slaStatus,_reqKey:dateKeyRaw(r.Requested)};
   });
   const total=enriched.length;
 
   // INFO BANNER
-  const snapCount=state.snapshots.length;
-  $('infoBanner').innerHTML = snapCount<=1
-    ? `📌 <strong>Baseline set (${fmtDateTime(state.baselineTime)})</strong> — snapshot #1. Upload more CSVs every ~2 hours and <strong>Total Worked</strong> builds automatically${SCRIPT_URL?' across all devices.':'.'}`
-    : `✅ <strong>${snapCount} snapshots today.</strong> Running total reflects all removals since the ${fmtDateTime(state.baselineTime)} baseline.${SCRIPT_URL?' Synced across all devices.':''}`;
+  const sc=STATE?STATE.snapshots.length:0;
+  $('infoBanner').innerHTML = STATE && sc>1
+    ? `✅ <strong>${sc} snapshots today.</strong> Running total reflects all removals since the ${fmtDT(STATE.baseline_time)} baseline. Synced across all supervisors.`
+    : `📌 <strong>Baseline set (${STATE?fmtDT(STATE.baseline_time):'—'}).</strong> This is snapshot #1. Upload more CSVs every ~2 hours to build the running worked count.`;
 
   // WORKED HERO
-  const workedCount=state.workedIds.size, newInCount=state.newIds.size;
-  const baselineSize=state.baselineSize||0, netChange=total-baselineSize;
-  $('whWorked').textContent   = fmt(workedCount);
-  $('whWorkedSub').textContent= state.baseline?`Removed from queue since ${fmtDateTime(state.baselineTime)}`:'Upload more snapshots to track removals';
-  $('whNewIn').textContent    = fmt(newInCount);
-  $('whNet').textContent      = (netChange>=0?'+':'')+netChange;
-  $('whNet').className        = 'whs-val '+(netChange<0?'green':netChange>0?'red':'');
-  $('whBaseline').textContent = fmt(baselineSize);
-  $('whCurrent').textContent  = fmt(total);
+  const workedCount = STATE ? STATE.worked_ids.length : 0;
+  const newInCount  = STATE ? STATE.new_ids.length    : 0;
+  const baseSize    = STATE ? STATE.baseline_size      : 0;
+  const netChange   = total - baseSize;
+  $('whWorked').textContent    = fmt(workedCount);
+  $('whSub').textContent       = STATE ? `Removed from queue since ${fmtDT(STATE.baseline_time)}` : '—';
+  $('whBaseSize').textContent  = fmt(baseSize);
+  $('whCurrent').textContent   = fmt(total);
+  $('whNewIn').textContent     = fmt(newInCount);
+  const netEl=$('whNet');
+  netEl.textContent=(netChange>=0?'+':'')+netChange;
+  netEl.className='whs-val '+(netChange<0?'green':netChange>0?'red':'');
 
-  // CURRENT STATE
+  // CURRENT STATE KPIS
   const statusCounts=enriched.reduce((a,r)=>(a[r['Ticket status']]=(a[r['Ticket status']]||0)+1,a),{});
-  $('kTotal').textContent    = fmt(total);
-  $('kTotalSub').textContent = Object.entries(statusCounts).map(([k,v])=>`${k}: ${v}`).join(' · ');
+  $('kTotal').textContent   =fmt(total);
+  $('kTotalSub').textContent=Object.entries(statusCounts).map(([k,v])=>`${k}: ${v}`).join(' · ');
   const breached=enriched.filter(r=>r._slaStatus==='breached').length;
   const atRisk  =enriched.filter(r=>r._slaStatus==='atrisk').length;
   const okCount =enriched.filter(r=>r._slaStatus==='ok').length;
@@ -601,7 +608,7 @@ function render() {
   $('kSL').textContent=slPct+'%';
   $('kSLSub').textContent=`${withinSla} of ${total} under ${slaHrs}h`;
   $('kBreach').textContent=fmt(breached);
-  $('kBreachSub').textContent=`age ≥ ${slaHrs}h · ${atRisk} approaching`;
+  $('kBreachSub').textContent=`age ≥ ${slaHrs}h`;
   $('kAtRisk').textContent=fmt(atRisk);
   const oldest=enriched.reduce((m,r)=>r._ageH>(m||0)?r._ageH:m,0);
   $('kOldest').textContent=oldest?oldest.toFixed(1)+'h':'—';
@@ -609,24 +616,21 @@ function render() {
   $('kNewYest').textContent =fmt(enriched.filter(r=>r._reqKey===yestKey).length);
 
   // INTERVAL COMPARISON
-  if(prevRows.length>0){
-    $('comparisonSection').classList.remove('hidden');
+  if (prevRows.length>0) {
+    $('compSection').classList.remove('hidden');
     $('noCompHint').classList.add('hidden');
     const cIds=new Set(enriched.map(r=>r.ID)), pIds=new Set(prevRows.map(r=>r.ID));
-    $('cWorked').textContent  =fmt([...pIds].filter(id=>!cIds.has(id)).length);
-    $('cAdded').textContent   =fmt([...cIds].filter(id=>!pIds.has(id)).length);
-    $('cPrevTotal').textContent=fmt(pIds.size);
-    const netC=cIds.size-pIds.size;
-    $('cNet').textContent=(netC>0?'+':'')+netC;
-    $('cNet').style.color=netC<0?'#065f46':netC>0?'#991b1b':'#111827';
-    const prevMax=maxTs(prevRows), currMax=maxTs(currentRows);
-    if(prevMax&&currMax){
-      const spanMin=Math.max(0,Math.round((parseDate(currMax)-parseDate(prevMax))/60000));
-      $('cSpan').textContent=Math.floor(spanMin/60)>0?`${Math.floor(spanMin/60)}h ${spanMin%60}m`:`${spanMin}m`;
-      $('cSpanSub').textContent=`${prevMax} → ${currMax} CST`;
-    }
+    const iWorked=[...pIds].filter(id=>!cIds.has(id)).length;
+    const iAdded =[...cIds].filter(id=>!pIds.has(id)).length;
+    const iNet   =cIds.size-pIds.size;
+    $('compGrid').innerHTML=`
+      <div class="kpi" style="border-left-color:#8b5cf6"><div class="label">Worked (interval)</div><div class="value">${fmt(iWorked)}</div><div class="sub">IDs gone between these two uploads</div></div>
+      <div class="kpi info"><div class="label">New Arrivals</div><div class="value">${fmt(iAdded)}</div><div class="sub">New IDs since previous</div></div>
+      <div class="kpi warn"><div class="label">Net Change</div><div class="value" style="color:${iNet<0?'#059669':iNet>0?'#dc2626':'#111827'}">${(iNet>=0?'+':'')+iNet}</div><div class="sub">Current − Previous</div></div>
+      <div class="kpi info"><div class="label">Previous Size</div><div class="value">${fmt(pIds.size)}</div><div class="sub">At previous upload</div></div>
+    `;
   } else {
-    $('comparisonSection').classList.add('hidden');
+    $('compSection').classList.add('hidden');
     $('noCompHint').classList.remove('hidden');
   }
 
@@ -635,23 +639,21 @@ function render() {
   enriched.forEach(r=>{if(r._reqKey)volByDate[r._reqKey]=(volByDate[r._reqKey]||0)+1;});
   const volKeys=Object.keys(volByDate).sort();
   if(charts.vol)charts.vol.destroy();
-  charts.vol=new Chart($('chartVolume'),{type:'bar',data:{labels:volKeys,datasets:[{label:'New tickets in (by Requested date)',data:volKeys.map(k=>volByDate[k]||0),backgroundColor:'#6366f1',borderRadius:3}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'top',labels:{boxWidth:12,font:{size:12}}}},scales:{y:{beginAtZero:true}}}});
+  charts.vol=new Chart($('chartVolume'),{type:'bar',data:{labels:volKeys,datasets:[{label:'New tickets in',data:volKeys.map(k=>volByDate[k]||0),backgroundColor:'#6366f1',borderRadius:3}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'top',labels:{boxWidth:12,font:{size:12}}}},scales:{y:{beginAtZero:true}}}});
 
   // DAILY TABLE
   let sumNew=0;
   $('dailyBody').innerHTML=volKeys.map(k=>{const n=volByDate[k]||0;sumNew+=n;return`<tr><td>${k}</td><td class="num">${n}</td><td class="num">${n}</td></tr>`;}).join('');
   $('dailyTotal').textContent=fmt(sumNew); $('dailyQueue').textContent=fmt(sumNew);
 
-  // ISSUE CHART
+  // ISSUE CHART + TABLE
   const issues={};
-  enriched.forEach(r=>{const lbl=(r.Issue||'').trim()||'(Untagged)';issues[lbl]=(issues[lbl]||0)+1;});
+  enriched.forEach(r=>{const l=(r.Issue||'').trim()||'(Untagged)';issues[l]=(issues[l]||0)+1;});
   const issueList=Object.entries(issues).sort((a,b)=>b[1]-a[1]);
   if(charts.iss)charts.iss.destroy();
   charts.iss=new Chart($('chartIssue'),{type:'bar',data:{labels:issueList.slice(0,10).map(x=>x[0].length>32?x[0].slice(0,30)+'…':x[0]),datasets:[{data:issueList.slice(0,10).map(x=>x[1]),backgroundColor:'#f59e0b',borderRadius:3}]},options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{beginAtZero:true}}}});
-
-  // ISSUE TABLE
   let issueSum=0;
-  $('issueBody').innerHTML=issueList.map(([k,v])=>{issueSum+=v;return`<tr><td>${escHtml(k)}</td><td class="num">${v}</td><td class="num"><span class="pct-bar"><div style="width:${(v/total*100).toFixed(1)}%"></div></span>${pct(v,total)}</td></tr>`;}).join('');
+  $('issueBody').innerHTML=issueList.map(([k,v])=>{issueSum+=v;return`<tr><td>${escH(k)}</td><td class="num">${v}</td><td class="num"><span class="pct-bar"><div style="width:${(v/total*100).toFixed(1)}%"></div></span>${pct(v,total)}</td></tr>`;}).join('');
   $('issueTotal').textContent=fmt(issueSum);
 
   // BUCKETS
@@ -667,38 +669,61 @@ function render() {
   $('bucketBody').innerHTML=buckets.map(b=>{
     const c=enriched.filter(r=>r._ageH!=null&&r._ageH>=b.lo&&(b.top===Infinity||r._ageH<b.top)).length;
     const ageLabel=b.top===Infinity?`${b.lo}+ hours`:`${b.lo}–${b.top} hours`;
-    const timeLabel=b.top===Infinity?`Before ${fmtTime(new Date(now-b.lo*3600000))}`:
-      `${fmtTime(new Date(now-b.top*3600000))} – ${fmtTime(new Date(now-b.lo*3600000))}`;
+    const timeLabel=b.top===Infinity?`Before ${fmtTime(new Date(now-b.lo*3600000))}`:`${fmtTime(new Date(now-b.top*3600000))} – ${fmtTime(new Date(now-b.lo*3600000))}`;
     return`<tr class="bucket-row ${b.cls}"><td><span class="bucket-label">${b.name}</span></td><td>${ageLabel}</td><td>${timeLabel}</td><td class="num"><strong>${c}</strong></td><td class="num">${pct(c,total)}</td><td class="num"><span class="status-dot" style="background:${b.dot}"></span></td></tr>`;
   }).join('');
+
+  updateSnapshotLog();
 }
 
-// ─── SAMPLE ───────────────────────────────────────────────────────────────────
-function loadSample(){
-  const now=new Date(),h=3600000;
-  const fmtTs=ms=>{const d=new Date(now.getTime()+ms);return new Intl.DateTimeFormat('en-CA',{timeZone:TZ,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false}).format(d).replace(', ',' ');};
-  currentRows=[
-    {ID:'1001','Ticket status':'Open', Requester:'Alice',Requested:fmtTs(-14*h),Updated:fmtTs(-2*h),SLA:fmtTs(-3*h), Issue:'System::order damaged or defective'},
-    {ID:'1002','Ticket status':'New',  Requester:'Bob',  Requested:fmtTs(-13*h),Updated:fmtTs(-1*h),SLA:fmtTs(-1*h), Issue:'System::late delivery'},
-    {ID:'1003','Ticket status':'Open', Requester:'Carol',Requested:fmtTs(-11*h),Updated:fmtTs(-0.5*h),SLA:fmtTs(1*h),Issue:'System::wrong items delivered'},
-    {ID:'1004','Ticket status':'New',  Requester:'Dave', Requested:fmtTs(-7*h), Updated:fmtTs(-1*h),SLA:fmtTs(5*h),  Issue:'System::late delivery'},
-    {ID:'1005','Ticket status':'Open', Requester:'Eve',  Requested:fmtTs(-4*h), Updated:fmtTs(-0.5*h),SLA:fmtTs(8*h),Issue:'System::tracking issue'},
-    {ID:'1006','Ticket status':'New',  Requester:'Frank',Requested:fmtTs(-6*h), Updated:fmtTs(-1*h),SLA:'',          Issue:'(Untagged)'},
-  ];
-  processCurrentUpload(currentRows,'sample-data.csv');
+function updateSnapshotLog() {
+  if (!STATE) return;
+  $('snapsBody').innerHTML = [...STATE.snapshots].reverse().map((s,i)=>`
+    <tr><td>${fmtDT(s.time)}</td><td><strong>${escH(s.supervisor)}</strong></td><td class="num">${fmt(s.size)}</td><td style="color:#6b7280">${escH(s.filename)}</td></tr>
+  `).join('') || '<tr><td colspan="4" style="color:#6b7280;text-align:center;">No snapshots yet</td></tr>';
+}
+
+// ─── RESET ────────────────────────────────────────────────────────────────────
+async function resetDay() {
+  if (!confirm('Reset today\'s baseline and all worked counts for everyone? This cannot be undone.')) return;
+  syncBar('loading','Resetting…');
+  try {
+    await dbDelete(todayKeyCst());
+    STATE=null; currentRows=[]; prevRows=[];
+    $('dashboard').classList.add('hidden');
+    $('emptyState').classList.remove('hidden');
+    $('uzLoaded').classList.add('hidden');
+    $('dtBaseline').textContent='—'; $('dtBaseSize').textContent='—';
+    $('dtSnapCount').textContent='0'; $('dtLastUpload').textContent='—';
+    $('snapHistory').innerHTML='';
+    syncBar('ok','Day reset · ready for new baseline');
+  } catch(e) {
+    syncBar('error','Reset failed: '+e.message);
+  }
 }
 
 // ─── CLOCK ────────────────────────────────────────────────────────────────────
-function updateClock(){$('nowClock').textContent='Updated: '+new Intl.DateTimeFormat('en-US',{timeZone:TZ,weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit',hour12:true}).format(new Date())+' CST';}
+function updateClock(){
+  $('nowClock').textContent=new Intl.DateTimeFormat('en-US',{timeZone:TZ,weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit',hour12:true}).format(new Date())+' CST';
+}
 updateClock(); setInterval(updateClock,60000);
 
-// ─── WIRING ───────────────────────────────────────────────────────────────────
-$('resetBtn').addEventListener('click',resetDay);
+// Auto-refresh from DB every 5 minutes
+setInterval(()=>{ if(!currentRows.length) loadState(); }, 5*60*1000);
+
+// ─── BUTTON WIRING ────────────────────────────────────────────────────────────
 $('recalcBtn').addEventListener('click',()=>{if(currentRows.length)render();});
+$('refreshBtn').addEventListener('click',loadState);
+$('resetBtn').addEventListener('click',resetDay);
 $('slaTarget').addEventListener('change',()=>{if(currentRows.length)render();});
-$('sampleBtn').addEventListener('click',loadSample);
-updateDayTracker();
-initSetup();
+
+// Save supervisor name to localStorage
+$('supName').addEventListener('change',()=>localStorage.setItem('jf_sup_name',$('supName').value));
+const savedName=localStorage.getItem('jf_sup_name');
+if(savedName) $('supName').value=savedName;
+
+// ─── INIT ─────────────────────────────────────────────────────────────────────
+loadState();
 </script>
 </body>
 </html>
