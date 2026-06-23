@@ -378,10 +378,14 @@ function syncBar(state, msg) {
 }
 
 // ─── STATE ────────────────────────────────────────────────────────────────────
+// STATE mirrors the Supabase row. render_data is a pre-computed summary blob
+// so any browser can render the full dashboard without the raw CSV rows.
 let STATE = null;
 let charts = {};
 
 // ─── COMPUTE render_data FROM RAW ROWS ───────────────────────────────────────
+// Called after any CSV upload. Returns a compact summary object (~5-20KB)
+// that is enough to fully render all charts, tables, and KPI cards.
 function buildRenderData(rows, slaHrs) {
   const now      = new Date();
   const todayKey = todayKeyCst();
@@ -413,15 +417,18 @@ function buildRenderData(rows, slaHrs) {
     a[k] = (a[k] || 0) + 1; return a;
   }, {});
 
+  // vol by date
   const volByDate = {};
   enriched.forEach(r => { if (r._reqKey) volByDate[r._reqKey] = (volByDate[r._reqKey] || 0) + 1; });
 
+  // issues
   const issues = {};
   enriched.forEach(r => {
     const l = (r.Issue || '').trim() || '(Untagged)';
     issues[l] = (issues[l] || 0) + 1;
   });
 
+  // buckets — stored as counts only; time labels re-computed at render time
   const bucketDefs = [
     { name:'MISSED SLA', cls:'bk-missed',  dot:'#ef4444', lo:slaHrs,   top:Infinity },
     { name:'CRITICAL',   cls:'bk-critical',dot:'#f59e0b', lo:slaHrs-2, top:slaHrs   },
@@ -448,12 +455,12 @@ function buildRenderData(rows, slaHrs) {
     new_yest:    newYest,
     status_counts: statusCounts,
     vol_by_date:   volByDate,
-    issues,
-    buckets,
+    issues,       // { label: count }
+    buckets,      // array with counts
   };
 }
 
-// ─── RENDER FROM render_data ──────────────────────────────────────────────────
+// ─── RENDER FROM render_data (works on any browser without raw CSV) ───────────
 function renderFromData(rd) {
   if (!rd || !STATE) return;
   $('emptyState').classList.add('hidden');
@@ -464,6 +471,7 @@ function renderFromData(rd) {
   const sc        = STATE.snapshots.length;
   const total     = rd.total;
 
+  // INFO BANNER
   $('infoBanner').innerHTML = sc > 1
     ? `✅ <strong>${sc} snapshots today.</strong> Running total reflects all removals since the ${fmtDT(STATE.baseline_time)} baseline. Synced across all supervisors.`
     : `📌 <strong>Baseline set (${fmtDT(STATE.baseline_time)}).</strong> This is snapshot #1. Upload more CSVs every ~2 hours to build the running worked count.`;
@@ -498,7 +506,7 @@ function renderFromData(rd) {
   $('kAtRisk').textContent   = fmt(rd.at_risk);
   $('kOldest').textContent   = rd.oldest ? rd.oldest.toFixed(1) + 'h' : '—';
 
-  // INTERVAL COMPARISON
+  // INTERVAL COMPARISON (stored in STATE from last two snapshots)
   const ic = STATE.interval_comparison;
   if (ic) {
     $('compSection').classList.remove('hidden');
@@ -541,7 +549,7 @@ function renderFromData(rd) {
   $('issueBody').innerHTML = issueList.map(([k,v]) => { issueSum += v; return `<tr><td>${escH(k)}</td><td class="num">${v}</td><td class="num"><span class="pct-bar"><div style="width:${(v/total*100).toFixed(1)}%"></div></span>${pct(v,total)}</td></tr>`; }).join('');
   $('issueTotal').textContent = fmt(issueSum);
 
-  // PRIORITY BUCKETS
+  // PRIORITY BUCKETS — re-compute time labels against current clock
   $('bucketBody').innerHTML = rd.buckets.map(b => {
     const ageLabel  = b.top === Infinity ? `${b.lo}+ hours` : `${b.lo}–${b.top} hours`;
     const timeLabel = b.top === Infinity
@@ -573,9 +581,11 @@ async function loadState() {
       };
       syncBar('ok', `Synced · ${fmtDT(new Date().toISOString())} · ${STATE.snapshots.length} snapshot${STATE.snapshots.length !== 1 ? 's' : ''} today`);
       updateDayTracker();
+      // ← KEY CHANGE: render full dashboard if render_data exists
       if (STATE.render_data) {
         renderFromData(STATE.render_data);
       } else {
+        // Old row with no render_data yet — show partial totals only
         renderDayTotalsOnly();
       }
     } else {
@@ -602,8 +612,8 @@ async function saveState() {
       worked_ids:          STATE.worked_ids,
       new_ids:             STATE.new_ids,
       snapshots:           STATE.snapshots,
-      render_data:         STATE.render_data,
-      interval_comparison: STATE.interval_comparison,
+      render_data:         STATE.render_data,         // ← NEW
+      interval_comparison: STATE.interval_comparison, // ← NEW
     });
     syncBar('ok', 'Saved · ' + fmtDT(new Date().toISOString()) + ' · All supervisors synced');
   } catch(e) {
@@ -670,29 +680,29 @@ async function processUpload(rows, filename) {
       interval_comparison: null,
     };
   } else {
-    const baseSet = new Set(STATE.baseline_ids);
-
-    // ── FIX 2: capture previous worked count AFTER fresh fetch, BEFORE set math ──
-    const prevWorkedCount = STATE.worked_ids.length;
-
-    // ── FIX 1: seed workedSet from existing accumulated IDs, not empty set ──
+    // Accumulate removals and new arrivals
+    const baseSet   = new Set(STATE.baseline_ids);
     const workedSet = new Set(STATE.worked_ids);
     const newSet    = new Set(STATE.new_ids);
 
-    baseSet.forEach(id    => { if (!currentIds.has(id)) workedSet.add(id); });
+    baseSet.forEach(id   => { if (!currentIds.has(id)) workedSet.add(id); });
     currentIds.forEach(id => { if (!baseSet.has(id))   newSet.add(id); });
 
-    // ── Interval comparison ──
+    // ── Interval comparison: diff between previous snapshot IDs and current ──
     const prevSnap = STATE.snapshots[STATE.snapshots.length - 1];
-    if (prevSnap) {
-      const prevSize      = prevSnap.size;
-      const currSize      = currentIds.size;
-      const netInterval   = currSize - prevSize;
-      const prevNewSet    = new Set(STATE.new_ids);
+    if (prevSnap && STATE.render_data) {
+      // We stored prev snapshot size; IDs aren't kept raw (too large) so
+      // we compute interval worked from the worked_ids delta instead.
+      const prevWorkedCount = workedSet.size - (workedSet.size - [...workedSet].filter(id => !new Set(STATE.worked_ids).has(id)).length);
+      // Simpler: diff current snapshot count vs previous snapshot count
+      const prevSize = prevSnap.size;
+      const currSize = currentIds.size;
+      const netInterval = currSize - prevSize;
+      // IDs added this interval = in current but not in baseline AND not in previous new_ids
+      const prevNewSet = new Set(STATE.new_ids);
       const intervalAdded = [...currentIds].filter(id => !baseSet.has(id) && !prevNewSet.has(id)).length;
-
-      // ── FIX 3: interval worked = growth in workedSet since last snapshot ──
-      const intervalWorked = workedSet.size - prevWorkedCount;
+      // IDs worked this interval = newly added to workedSet
+      const intervalWorked = [...workedSet].filter(id => !new Set(STATE.worked_ids).has(id)).length;
 
       STATE.interval_comparison = {
         worked:    intervalWorked,
@@ -706,7 +716,10 @@ async function processUpload(rows, filename) {
     STATE.new_ids    = [...newSet];
   }
 
+  // Build and store render_data summary — replaces raw rows
   STATE.render_data = buildRenderData(rows, slaHrs);
+
+  // Record snapshot (store size for interval math, not raw rows)
   STATE.snapshots.push({ time: now, size: rows.length, filename, supervisor: supName });
 
   $('uzLoaded').textContent = `✓ ${filename} · ${rows.length} tickets · ${supName} · ${fmtDT(now)}`;
@@ -737,6 +750,7 @@ function updateDayTracker() {
   }).join('');
 }
 
+// Fallback for rows with no render_data (e.g. loaded from old schema)
 function renderDayTotalsOnly() {
   if (!STATE) return;
   $('emptyState').classList.add('hidden');
