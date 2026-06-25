@@ -358,17 +358,33 @@ async function dbGet(dayKey) {
   return rows[0] || null;
 }
 
-async function dbUpsert(record) {
+// Insert baseline only — ignore-duplicates means the first writer wins and subsequent
+// concurrent inserts are silently dropped. This prevents the race condition where two
+// browsers uploading at the same time both see no state and both try to set the baseline.
+async function dbInsertBaseline(record) {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${TABLE}?on_conflict=day_key`, {
     method: 'POST',
-    headers: { ...sbHeaders, 'Prefer': 'resolution=merge-duplicates,return=representation' },
+    headers: { ...sbHeaders, 'Prefer': 'resolution=ignore-duplicates,return=representation' },
     body: JSON.stringify(record)
   });
   if (!res.ok) {
     const txt = await res.text();
-    throw new Error('UPSERT failed: ' + res.status + ' ' + txt);
+    throw new Error('INSERT baseline failed: ' + res.status + ' ' + txt);
   }
   return res.json();
+}
+
+// Patch only the non-baseline fields (never overwrites baseline_ids/time/size).
+async function dbPatch(dayKey, fields) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${TABLE}?day_key=eq.${dayKey}`, {
+    method: 'PATCH',
+    headers: sbHeaders,
+    body: JSON.stringify(fields)
+  });
+  if (!res.ok) {
+    const txt = await res.text();
+    throw new Error('PATCH failed: ' + res.status + ' ' + txt);
+  }
 }
 
 async function dbDelete(dayKey) {
@@ -620,11 +636,7 @@ async function saveState() {
   if (!STATE) return;
   syncBar('loading', 'Saving to Supabase…');
   try {
-    await dbUpsert({
-      day_key:             STATE.day_key,
-      baseline_ids:        STATE.baseline_ids,
-      baseline_time:       STATE.baseline_time,
-      baseline_size:       STATE.baseline_size,
+    await dbPatch(STATE.day_key, {
       worked_ids:          STATE.worked_ids,
       new_ids:             STATE.new_ids,
       snapshots:           STATE.snapshots,
@@ -682,63 +694,64 @@ async function processUpload(rows, filename) {
     const currentIds = new Set(rows.map(r => String(r.ID)));
     const slaHrs     = parseFloat($('slaTarget').value) || 12;
 
-    // Re-fetch latest state before computing to minimize overwrite risk
-    syncBar('loading', 'Fetching latest state before saving…');
-    try {
-      const fresh = await dbGet(dayKey);
-      if (fresh) STATE = hydrateRow(fresh);
-    } catch(e) { /* fall through, use local STATE */ }
+    // Step 1: Attempt to claim the baseline via INSERT ignore-duplicates.
+    // If two browsers upload simultaneously, only the first INSERT wins — the rest
+    // are silently dropped. This guarantees the baseline is set exactly once.
+    syncBar('loading', 'Claiming baseline…');
+    await dbInsertBaseline({
+      day_key:             dayKey,
+      baseline_ids:        [...currentIds],
+      baseline_time:       now,
+      baseline_size:       currentIds.size,
+      worked_ids:          [],
+      new_ids:             [],
+      snapshots:           [],
+      render_data:         null,
+      interval_comparison: null,
+    }).catch(() => { /* row already exists — baseline already set, that's fine */ });
 
-    if (!STATE || STATE.day_key !== dayKey) {
-      // First upload of the day — set baseline
-      STATE = {
-        day_key:             dayKey,
-        baseline_ids:        [...currentIds],
-        baseline_time:       now,
-        baseline_size:       currentIds.size,
-        worked_ids:          [],
-        new_ids:             [],
-        snapshots:           [],
-        render_data:         null,
-        interval_comparison: null,
+    // Step 2: Re-fetch so we always compute against the actual baseline in DB
+    // (which may have been set by a different browser if we lost the race above).
+    syncBar('loading', 'Fetching latest state…');
+    const fresh = await dbGet(dayKey);
+    STATE = hydrateRow(fresh);
+
+    // Step 3: Compute deltas against the actual baseline.
+    const baseSet   = new Set(STATE.baseline_ids);
+    const workedSet = new Set(STATE.worked_ids);
+    const newSet    = new Set(STATE.new_ids);
+
+    // Tickets removed from the original baseline → worked
+    baseSet.forEach(id => { if (!currentIds.has(id)) workedSet.add(id); });
+
+    // Tickets removed from post-baseline arrivals → also worked, remove from newSet
+    const resolvedNew = [...newSet].filter(id => !currentIds.has(id));
+    resolvedNew.forEach(id => { workedSet.add(id); newSet.delete(id); });
+
+    // Track new arrivals (not in baseline, not already worked or tracked)
+    currentIds.forEach(id => {
+      if (!baseSet.has(id) && !workedSet.has(id)) newSet.add(id);
+    });
+
+    // Interval comparison: diff against the previous snapshot
+    const prevSnap = STATE.snapshots[STATE.snapshots.length - 1];
+    if (prevSnap && STATE.render_data) {
+      const oldWorkedSet   = new Set(STATE.worked_ids);
+      const oldNewSet      = new Set(STATE.new_ids);
+      const intervalWorked = [...workedSet].filter(id => !oldWorkedSet.has(id)).length;
+      const intervalAdded  = [...currentIds].filter(id => !baseSet.has(id) && !oldNewSet.has(id)).length;
+      const netInterval    = currentIds.size - prevSnap.size;
+
+      STATE.interval_comparison = {
+        worked:    intervalWorked,
+        added:     intervalAdded,
+        net:       netInterval,
+        prev_size: prevSnap.size,
       };
-    } else {
-      const baseSet   = new Set(STATE.baseline_ids);
-      const workedSet = new Set(STATE.worked_ids);
-      const newSet    = new Set(STATE.new_ids);
-
-      // Tickets removed from the original baseline → worked
-      baseSet.forEach(id => { if (!currentIds.has(id)) workedSet.add(id); });
-
-      // Tickets removed from post-baseline arrivals → also worked, remove from newSet
-      const resolvedNew = [...newSet].filter(id => !currentIds.has(id));
-      resolvedNew.forEach(id => { workedSet.add(id); newSet.delete(id); });
-
-      // Track new arrivals (not in baseline, not already worked or tracked)
-      currentIds.forEach(id => {
-        if (!baseSet.has(id) && !workedSet.has(id)) newSet.add(id);
-      });
-
-      // Interval comparison: diff against the previous snapshot
-      const prevSnap = STATE.snapshots[STATE.snapshots.length - 1];
-      if (prevSnap && STATE.render_data) {
-        const oldWorkedSet   = new Set(STATE.worked_ids);
-        const oldNewSet      = new Set(STATE.new_ids);
-        const intervalWorked = [...workedSet].filter(id => !oldWorkedSet.has(id)).length;
-        const intervalAdded  = [...currentIds].filter(id => !baseSet.has(id) && !oldNewSet.has(id)).length;
-        const netInterval    = currentIds.size - prevSnap.size;
-
-        STATE.interval_comparison = {
-          worked:    intervalWorked,
-          added:     intervalAdded,
-          net:       netInterval,
-          prev_size: prevSnap.size,
-        };
-      }
-
-      STATE.worked_ids = [...workedSet];
-      STATE.new_ids    = [...newSet];
     }
+
+    STATE.worked_ids = [...workedSet];
+    STATE.new_ids    = [...newSet];
 
     STATE.render_data = buildRenderData(rows, slaHrs);
     STATE.snapshots.push({ time: now, size: rows.length, filename, supervisor: supName });
