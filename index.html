@@ -26,6 +26,7 @@ h1 { font-size: 22px; color: #111827; font-weight: 700; }
 .controls { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; padding: 16px; background: #fff; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
 .upload-zone { flex: 1; min-width: 260px; border: 2px dashed #cbd5e1; border-radius: 8px; padding: 14px; text-align: center; cursor: pointer; transition: all 0.15s; background: #fafbfc; }
 .upload-zone:hover, .upload-zone.dragover { border-color: #6366f1; background: #eef2ff; }
+.upload-zone.uploading { border-color: #3b82f6; background: #eff6ff; cursor: not-allowed; opacity: 0.7; }
 .upload-zone input { display: none; }
 .uz-loaded { font-size: 11px; color: #059669; margin-top: 5px; font-weight: 600; }
 button { background: #4f46e5; color: #fff; border: 0; padding: 9px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; }
@@ -205,7 +206,7 @@ tfoot td { font-weight: 700; background: #f3f4f6; border-top: 2px solid #d1d5db;
       <div class="wh-stat"><div class="whs-label">Net Change</div><div class="whs-val" id="whNet">—</div></div>
       <div class="wh-stat"><div class="whs-label">Baseline Size</div><div class="whs-val" id="whBaseSize">—</div></div>
       <div class="wh-stat"><div class="whs-label">Current Size</div><div class="whs-val" id="whCurrent">—</div></div>
-      <div class="wh-stat"><div class="whs-label">New Arrivals</div><div class="whs-val" id="whNewIn">—</div></div>
+      <div class="wh-stat"><div class="whs-label">New (still open)</div><div class="whs-val" id="whNewIn">—</div></div>
     </div>
   </div>
 
@@ -315,6 +316,13 @@ function addDaysKey(k,delta) {
   const [y,m,d]=k.split('-').map(Number);
   return new Date(Date.UTC(y,m-1,d+delta)).toISOString().slice(0,10);
 }
+
+// IMPORTANT: parseDate treats the Zendesk "Requested" timestamp as CST/CDT local time.
+// If your Zendesk account exports timestamps in UTC instead (Zendesk's global default),
+// all ticket ages and SLA buckets will be wrong by 5-6 hours. To verify: compare a ticket's
+// "Requested" value in the CSV against what Zendesk shows in the UI. If the hours match
+// your local Chicago time, this is correct. If they're 5-6 hours ahead, change the
+// parseDate body to: return new Date(s.trim().replace(' ', 'T') + 'Z');
 function parseDate(s) {
   if (!s) return null; s=s.trim();
   if (!s||s==='-'||s==="'-") return null;
@@ -328,6 +336,7 @@ function parseDate(s) {
   const wall=Date.UTC(+get('year'),+get('month')-1,+get('day'),hr,+get('minute'));
   return new Date(guess.getTime()-(wall-guess.getTime()));
 }
+
 function dateKeyRaw(s) {
   if (!s) return null; s=s.trim();
   if (!s||s==='-'||s==="'-") return null; return s.slice(0,10);
@@ -378,10 +387,13 @@ function syncBar(state, msg) {
 }
 
 // ─── STATE ────────────────────────────────────────────────────────────────────
-let STATE = null;
-let charts = {};
+let STATE      = null;
+let charts     = {};
+let uploading  = false; // lock to prevent concurrent uploads
 
-// ─── HYDRATE ROW → STATE (always stringify IDs to prevent Supabase type coercion bugs) ───
+// ─── HYDRATE ROW → STATE ──────────────────────────────────────────────────────
+// Always .map(String) — Supabase JSONB coerces numeric-looking strings to numbers,
+// which breaks Set.has() comparisons against string IDs from the CSV.
 function hydrateRow(row) {
   return {
     day_key:             row.day_key,
@@ -394,6 +406,22 @@ function hydrateRow(row) {
     render_data:         row.render_data    || null,
     interval_comparison: row.interval_comparison || null,
   };
+}
+
+// ─── BUCKET DEFINITIONS ───────────────────────────────────────────────────────
+// top: null means "no upper bound" (oldest/missed SLA).
+// Using null instead of Infinity because JSON.stringify(Infinity) === "null",
+// which would silently corrupt the value when saving to Supabase.
+function buildBucketDefs(slaHrs) {
+  return [
+    { name:'MISSED SLA', cls:'bk-missed',  dot:'#ef4444', lo:slaHrs,   top:null      },
+    { name:'CRITICAL',   cls:'bk-critical',dot:'#f59e0b', lo:slaHrs-2, top:slaHrs    },
+    { name:'URGENT',     cls:'bk-urgent',  dot:'#fbbf24', lo:slaHrs-4, top:slaHrs-2  },
+    { name:'HIGH',       cls:'bk-high',    dot:'#10b981', lo:slaHrs-6, top:slaHrs-4  },
+    { name:'MEDIUM',     cls:'bk-medium',  dot:'#94a3b8', lo:4,        top:Math.max(4, slaHrs-6) },
+    { name:'LOW',        cls:'bk-low',     dot:'#cbd5e1', lo:2,        top:4         },
+    { name:'SAFE',       cls:'bk-safe',    dot:'#e2e8f0', lo:0,        top:2         },
+  ];
 }
 
 // ─── COMPUTE render_data FROM RAW ROWS ───────────────────────────────────────
@@ -419,7 +447,7 @@ function buildRenderData(rows, slaHrs) {
   const breached = enriched.filter(r => r._slaStatus === 'breached').length;
   const atRisk   = enriched.filter(r => r._slaStatus === 'atrisk').length;
   const okCount  = enriched.filter(r => r._slaStatus === 'ok').length;
-  const oldest   = enriched.reduce((m, r) => r._ageH > (m || 0) ? r._ageH : m, 0);
+  const oldest   = enriched.reduce((m, r) => (r._ageH != null && r._ageH > m) ? r._ageH : m, 0);
   const newToday = enriched.filter(r => r._reqKey === todayKey).length;
   const newYest  = enriched.filter(r => r._reqKey === yestKey).length;
 
@@ -437,18 +465,14 @@ function buildRenderData(rows, slaHrs) {
     issues[l] = (issues[l] || 0) + 1;
   });
 
-  const bucketDefs = [
-    { name:'MISSED SLA', cls:'bk-missed',  dot:'#ef4444', lo:slaHrs,   top:Infinity },
-    { name:'CRITICAL',   cls:'bk-critical',dot:'#f59e0b', lo:slaHrs-2, top:slaHrs   },
-    { name:'URGENT',     cls:'bk-urgent',  dot:'#fbbf24', lo:slaHrs-4, top:slaHrs-2 },
-    { name:'HIGH',       cls:'bk-high',    dot:'#10b981', lo:slaHrs-6, top:slaHrs-4 },
-    { name:'MEDIUM',     cls:'bk-medium',  dot:'#94a3b8', lo:4,        top:slaHrs-6 },
-    { name:'LOW',        cls:'bk-low',     dot:'#cbd5e1', lo:2,        top:4        },
-    { name:'SAFE',       cls:'bk-safe',    dot:'#e2e8f0', lo:0,        top:2        },
-  ];
+  const bucketDefs = buildBucketDefs(slaHrs);
   const buckets = bucketDefs.map(b => ({
     ...b,
-    count: enriched.filter(r => r._ageH != null && r._ageH >= b.lo && (b.top === Infinity || r._ageH < b.top)).length
+    count: enriched.filter(r =>
+      r._ageH != null &&
+      r._ageH >= b.lo &&
+      (b.top === null || r._ageH < b.top)
+    ).length
   }));
 
   return {
@@ -517,7 +541,7 @@ function renderFromData(rd) {
     $('noCompHint').classList.add('hidden');
     $('compGrid').innerHTML = `
       <div class="kpi" style="border-left-color:#8b5cf6"><div class="label">Worked (interval)</div><div class="value">${fmt(ic.worked)}</div><div class="sub">IDs gone between these two uploads</div></div>
-      <div class="kpi info"><div class="label">New Arrivals</div><div class="value">${fmt(ic.added)}</div><div class="sub">New IDs since previous</div></div>
+      <div class="kpi info"><div class="label">New Arrivals</div><div class="value">${fmt(ic.added)}</div><div class="sub">New IDs since previous upload</div></div>
       <div class="kpi warn"><div class="label">Net Change</div><div class="value" style="color:${ic.net<0?'#059669':ic.net>0?'#dc2626':'#111827'}">${(ic.net>=0?'+':'')+ic.net}</div><div class="sub">Current − Previous</div></div>
       <div class="kpi info"><div class="label">Previous Size</div><div class="value">${fmt(ic.prev_size)}</div><div class="sub">At previous upload</div></div>
     `;
@@ -550,9 +574,11 @@ function renderFromData(rd) {
   $('issueBody').innerHTML = issueList.map(([k,v]) => { issueSum += v; return `<tr><td>${escH(k)}</td><td class="num">${v}</td><td class="num"><span class="pct-bar"><div style="width:${(v/total*100).toFixed(1)}%"></div></span>${pct(v,total)}</td></tr>`; }).join('');
   $('issueTotal').textContent = fmt(issueSum);
 
+  // Bucket rows: top===null means no upper bound (MISSED SLA bucket)
   $('bucketBody').innerHTML = rd.buckets.map(b => {
-    const ageLabel  = b.top === Infinity ? `${b.lo}+ hours` : `${b.lo}–${b.top} hours`;
-    const timeLabel = b.top === Infinity
+    const isOpen    = b.top === null || b.top === undefined;
+    const ageLabel  = isOpen ? `${b.lo}+ hours` : `${b.lo}–${b.top} hours`;
+    const timeLabel = isOpen
       ? `Before ${fmtTime(new Date(now - b.lo * 3600000))}`
       : `${fmtTime(new Date(now - b.top * 3600000))} – ${fmtTime(new Date(now - b.lo * 3600000))}`;
     return `<tr class="bucket-row ${b.cls}"><td><span class="bucket-label">${b.name}</span></td><td>${ageLabel}</td><td>${timeLabel}</td><td class="num"><strong>${b.count}</strong></td><td class="num">${pct(b.count,total)}</td><td class="num"><span class="status-dot" style="background:${b.dot}"></span></td></tr>`;
@@ -578,6 +604,8 @@ async function loadState() {
       }
     } else {
       STATE = null;
+      $('emptyState').classList.remove('hidden');
+      $('dashboard').classList.add('hidden');
       syncBar('ok', 'Connected · No data yet for today — upload first snapshot to set baseline');
     }
     $('metaLine').textContent = 'Connected to Supabase · ' + todayKeyCst();
@@ -611,13 +639,28 @@ async function saveState() {
 }
 
 // ─── FILE WIRING ──────────────────────────────────────────────────────────────
+function setUploadLock(locked) {
+  uploading = locked;
+  const z = $('uploadZone');
+  if (locked) {
+    z.classList.add('uploading');
+  } else {
+    z.classList.remove('uploading');
+    // Reset the file input so the same file can be re-selected and re-uploaded
+    $('csvFile').value = '';
+  }
+}
+
 function wireZone(zoneId, inputId, handler) {
   const z=$(zoneId), inp=$(inputId);
-  z.addEventListener('click', () => inp.click());
+  z.addEventListener('click', () => { if (!uploading) inp.click(); });
   inp.addEventListener('click', e => e.stopPropagation());
-  z.addEventListener('dragover', e => { e.preventDefault(); z.classList.add('dragover'); });
+  z.addEventListener('dragover', e => { e.preventDefault(); if (!uploading) z.classList.add('dragover'); });
   z.addEventListener('dragleave', () => z.classList.remove('dragover'));
-  z.addEventListener('drop', e => { e.preventDefault(); z.classList.remove('dragover'); if (e.dataTransfer.files[0]) handler(e.dataTransfer.files[0]); });
+  z.addEventListener('drop', e => {
+    e.preventDefault(); z.classList.remove('dragover');
+    if (!uploading && e.dataTransfer.files[0]) handler(e.dataTransfer.files[0]);
+  });
   inp.addEventListener('change', e => { if (e.target.files[0]) handler(e.target.files[0]); });
 }
 wireZone('uploadZone', 'csvFile', f => {
@@ -629,82 +672,88 @@ wireZone('uploadZone', 'csvFile', f => {
 
 // ─── PROCESS UPLOAD ───────────────────────────────────────────────────────────
 async function processUpload(rows, filename) {
-  const supName    = $('supName').value.trim() || 'Unknown';
-  const dayKey     = todayKeyCst();
-  const now        = new Date().toISOString();
-  const currentIds = new Set(rows.map(r => String(r.ID)));
-  const slaHrs     = parseFloat($('slaTarget').value) || 12;
+  if (uploading) return; // guard against concurrent calls
+  setUploadLock(true);
 
-  // Re-fetch latest state to reduce race conditions between supervisors
-  syncBar('loading', 'Fetching latest state before saving…');
   try {
-    const fresh = await dbGet(dayKey);
-    if (fresh) {
-      STATE = hydrateRow(fresh);
-    }
-  } catch(e) { /* fall through, use local STATE */ }
+    const supName    = $('supName').value.trim() || 'Unknown';
+    const dayKey     = todayKeyCst();
+    const now        = new Date().toISOString();
+    const currentIds = new Set(rows.map(r => String(r.ID)));
+    const slaHrs     = parseFloat($('slaTarget').value) || 12;
 
-  if (!STATE || STATE.day_key !== dayKey) {
-    // First upload of the day — set baseline
-    STATE = {
-      day_key:             dayKey,
-      baseline_ids:        [...currentIds],
-      baseline_time:       now,
-      baseline_size:       currentIds.size,
-      worked_ids:          [],
-      new_ids:             [],
-      snapshots:           [],
-      render_data:         null,
-      interval_comparison: null,
-    };
-  } else {
-    const baseSet   = new Set(STATE.baseline_ids);
-    const workedSet = new Set(STATE.worked_ids);
-    const newSet    = new Set(STATE.new_ids);
+    // Re-fetch latest state before computing to minimize overwrite risk
+    syncBar('loading', 'Fetching latest state before saving…');
+    try {
+      const fresh = await dbGet(dayKey);
+      if (fresh) STATE = hydrateRow(fresh);
+    } catch(e) { /* fall through, use local STATE */ }
 
-    // Tickets removed from the original baseline → worked
-    baseSet.forEach(id => { if (!currentIds.has(id)) workedSet.add(id); });
-
-    // Tickets removed from post-baseline arrivals → also worked, remove from newSet
-    const resolvedNew = [...newSet].filter(id => !currentIds.has(id));
-    resolvedNew.forEach(id => { workedSet.add(id); newSet.delete(id); });
-
-    // Track new arrivals (not in baseline, not already worked/tracked)
-    currentIds.forEach(id => {
-      if (!baseSet.has(id) && !workedSet.has(id)) newSet.add(id);
-    });
-
-    // Interval comparison: diff against previous snapshot
-    const prevSnap = STATE.snapshots[STATE.snapshots.length - 1];
-    if (prevSnap && STATE.render_data) {
-      const oldWorkedSet    = new Set(STATE.worked_ids);
-      const intervalWorked  = [...workedSet].filter(id => !oldWorkedSet.has(id)).length;
-      const oldNewSet       = new Set(STATE.new_ids);
-      const intervalAdded   = [...currentIds].filter(id => !baseSet.has(id) && !oldNewSet.has(id)).length;
-      const netInterval     = currentIds.size - prevSnap.size;
-
-      STATE.interval_comparison = {
-        worked:    intervalWorked,
-        added:     intervalAdded,
-        net:       netInterval,
-        prev_size: prevSnap.size,
+    if (!STATE || STATE.day_key !== dayKey) {
+      // First upload of the day — set baseline
+      STATE = {
+        day_key:             dayKey,
+        baseline_ids:        [...currentIds],
+        baseline_time:       now,
+        baseline_size:       currentIds.size,
+        worked_ids:          [],
+        new_ids:             [],
+        snapshots:           [],
+        render_data:         null,
+        interval_comparison: null,
       };
+    } else {
+      const baseSet   = new Set(STATE.baseline_ids);
+      const workedSet = new Set(STATE.worked_ids);
+      const newSet    = new Set(STATE.new_ids);
+
+      // Tickets removed from the original baseline → worked
+      baseSet.forEach(id => { if (!currentIds.has(id)) workedSet.add(id); });
+
+      // Tickets removed from post-baseline arrivals → also worked, remove from newSet
+      const resolvedNew = [...newSet].filter(id => !currentIds.has(id));
+      resolvedNew.forEach(id => { workedSet.add(id); newSet.delete(id); });
+
+      // Track new arrivals (not in baseline, not already worked or tracked)
+      currentIds.forEach(id => {
+        if (!baseSet.has(id) && !workedSet.has(id)) newSet.add(id);
+      });
+
+      // Interval comparison: diff against the previous snapshot
+      const prevSnap = STATE.snapshots[STATE.snapshots.length - 1];
+      if (prevSnap && STATE.render_data) {
+        const oldWorkedSet   = new Set(STATE.worked_ids);
+        const oldNewSet      = new Set(STATE.new_ids);
+        const intervalWorked = [...workedSet].filter(id => !oldWorkedSet.has(id)).length;
+        const intervalAdded  = [...currentIds].filter(id => !baseSet.has(id) && !oldNewSet.has(id)).length;
+        const netInterval    = currentIds.size - prevSnap.size;
+
+        STATE.interval_comparison = {
+          worked:    intervalWorked,
+          added:     intervalAdded,
+          net:       netInterval,
+          prev_size: prevSnap.size,
+        };
+      }
+
+      STATE.worked_ids = [...workedSet];
+      STATE.new_ids    = [...newSet];
     }
 
-    STATE.worked_ids = [...workedSet];
-    STATE.new_ids    = [...newSet];
+    STATE.render_data = buildRenderData(rows, slaHrs);
+    STATE.snapshots.push({ time: now, size: rows.length, filename, supervisor: supName });
+
+    $('uzLoaded').textContent = `✓ ${filename} · ${rows.length} tickets · ${supName} · ${fmtDT(now)}`;
+    $('uzLoaded').classList.remove('hidden');
+    $('metaLine').textContent = `Loaded ${rows.length} tickets from ${filename}`;
+
+    await saveState();
+    updateDayTracker();
+    renderFromData(STATE.render_data);
+  } finally {
+    // Always release the lock, even if something threw
+    setUploadLock(false);
   }
-
-  STATE.render_data = buildRenderData(rows, slaHrs);
-  STATE.snapshots.push({ time: now, size: rows.length, filename, supervisor: supName });
-
-  $('uzLoaded').textContent = `✓ ${filename} · ${rows.length} tickets · ${supName} · ${fmtDT(now)}`;
-  $('uzLoaded').classList.remove('hidden');
-  $('metaLine').textContent = `Loaded ${rows.length} tickets from ${filename}`;
-
-  await saveState();
-  updateDayTracker();
-  renderFromData(STATE.render_data);
 }
 
 // ─── DAY TRACKER ──────────────────────────────────────────────────────────────
